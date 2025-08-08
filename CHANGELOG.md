@@ -4,6 +4,12 @@
 
 ## 0.2.0 - Phase 2
 
+## 0.2.1 - Debug Logging Enhancements
+
+- Introduce `AppLogger` utility with safe fallbacks for unit tests
+- Add detailed Logcat statements in `MainActivity`, `SmsReceiver`, and `SmsInMemoryStore`
+- Build and unit tests passing
+
 - Add `SmsReceiver` manifest-declared `BroadcastReceiver` to capture `SMS_RECEIVED`
 - Implement `SmsInMemoryStore` with a `StateFlow` of messages
 - Update `MainActivity` UI to display live messages list

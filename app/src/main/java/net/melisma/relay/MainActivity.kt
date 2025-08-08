@@ -36,6 +36,7 @@ import net.melisma.relay.ui.theme.RelayTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLogger.i("MainActivity.onCreate")
         enableEdgeToEdge()
         setContent {
             RelayTheme {
@@ -49,6 +50,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun PermissionsScreen(modifier: Modifier = Modifier) {
+    AppLogger.d("PermissionsScreen composed")
     var permissionsGranted by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -56,14 +58,17 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
     val requestPermissionsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
         onResult = { results ->
+            AppLogger.d("Permissions result: $results")
             val readGranted = results[Manifest.permission.READ_SMS] == true
             val receiveGranted = results[Manifest.permission.RECEIVE_SMS] == true
             permissionsGranted = readGranted && receiveGranted
+            AppLogger.i("Permissions updated. READ_SMS=$readGranted, RECEIVE_SMS=$receiveGranted, all=$permissionsGranted")
         }
     )
 
     // Check current permission state on first composition
     LaunchedEffect(context) {
+        AppLogger.d("Checking initial permission state")
         val read = ContextCompat.checkSelfPermission(
             context, Manifest.permission.READ_SMS
         ) == PackageManager.PERMISSION_GRANTED
@@ -71,6 +76,7 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
             context, Manifest.permission.RECEIVE_SMS
         ) == PackageManager.PERMISSION_GRANTED
         permissionsGranted = read && receive
+        AppLogger.i("Initial permissions READ_SMS=$read, RECEIVE_SMS=$receive, all=$permissionsGranted")
     }
 
     Column(
@@ -81,6 +87,7 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
     ) {
         Text(text = "Permission status: ${if (permissionsGranted) "Granted" else "Denied"}")
         Button(onClick = {
+            AppLogger.i("Requesting SMS permissions")
             requestPermissionsLauncher.launch(
                 arrayOf(
                     Manifest.permission.READ_SMS,
@@ -91,8 +98,10 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
             Text("Request SMS Permissions")
         }
 
+        val items = SmsInMemoryStore.messages.value
+        AppLogger.d("Rendering messages list size=${items.size}")
         LazyColumn {
-            items(items = (SmsInMemoryStore.messages.value)) { item ->
+            items(items = items) { item ->
                 Text(text = "${item.sender}: ${item.body}")
             }
         }
