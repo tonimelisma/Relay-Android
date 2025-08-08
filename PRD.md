@@ -46,7 +46,7 @@ App requests permissions and displays the result. Implemented in `MainActivity` 
 - Append message to an in-app list (RecyclerView or simple list)
 
 **Deliverable:**  
-SMS appear in UI as they arrive (even in background).
+SMS appear in UI as they arrive (even in background). Implemented via manifest `SmsReceiver` pushing into an in-memory `StateFlow` consumed by Compose UI.
 
 ---
 
@@ -159,3 +159,5 @@ Basic but clean UX with minimal configuration options.
 This PRD breaks the app into self-contained phases with increasing functionality. You can ship early, test often, and refactor later without overcommitting to architecture from day one.
 
 
+
+N.B. for architecture, please read ARCH.md and CLAUDE.md

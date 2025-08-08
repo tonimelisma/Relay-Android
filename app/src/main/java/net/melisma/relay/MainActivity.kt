@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -26,6 +28,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import net.melisma.relay.ui.theme.RelayTheme
 
 class MainActivity : ComponentActivity() {
@@ -84,6 +89,12 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
             )
         }) {
             Text("Request SMS Permissions")
+        }
+
+        LazyColumn {
+            items(items = (SmsInMemoryStore.messages.value)) { item ->
+                Text(text = "${item.sender}: ${item.body}")
+            }
         }
     }
 }

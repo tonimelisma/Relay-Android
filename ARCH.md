@@ -9,6 +9,7 @@ This document describes the technical architecture of the Android SMS Sync app, 
 ## 🧱 High-Level Architecture Summary
 
 - SMS will be received via a manifest-declared `BroadcastReceiver` (Phase 2+)
+- SMS will be received via a manifest-declared `BroadcastReceiver` (Phase 2+). Implemented as `SmsReceiver` pushing into `SmsInMemoryStore` for now.
 - Messages will be stored in a local Room database (Phase 4+)
 - A background WorkManager job will upload unsynced messages (Phase 5+)
 - The UI will observe the local DB and reflect sync status (Phase 4+)
@@ -56,7 +57,7 @@ This document describes the technical architecture of the Android SMS Sync app, 
 
 ### 4. UI Layer
 
-- Built using MVVM: ViewModel + LiveData or StateFlow
+- Built using MVVM: ViewModel + LiveData or StateFlow. For Phase 2, Compose directly observes a `StateFlow` from `SmsInMemoryStore`.
 - UI shows:
   - List of messages
   - Sync status
@@ -179,3 +180,4 @@ The app will be tested across multiple layers to ensure correctness, stability, 
 5. ViewModel state flow (user experience)
 
 
+N.B. for further architectural guidance please also read CLAUDE.md
