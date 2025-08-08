@@ -8,11 +8,11 @@ This document describes the technical architecture of the Android SMS Sync app, 
 
 ## 🧱 High-Level Architecture Summary
 
-- SMS is received via a manifest-declared `BroadcastReceiver`
-- Messages are parsed and stored in a local Room database
-- A background WorkManager job uploads unsynced messages to the cloud
-- The UI observes the local DB and reflects sync status
-- Messages are deduplicated using a content-based hash
+- SMS will be received via a manifest-declared `BroadcastReceiver` (Phase 2+)
+- Messages will be stored in a local Room database (Phase 4+)
+- A background WorkManager job will upload unsynced messages (Phase 5+)
+- The UI will observe the local DB and reflect sync status (Phase 4+)
+- Messages will be deduplicated using a content-based hash (Phase 4+)
 
 ---
 
@@ -67,11 +67,11 @@ This document describes the technical architecture of the Android SMS Sync app, 
 
 ---
 
-### 5. Permissions UX
+### 5. Permissions UX (Phase 1)
 
-- Uses `ActivityCompat.requestPermissions()` for `RECEIVE_SMS` and `READ_SMS`
-- Shows rationale UI before prompting
-- Provides fallback and settings redirect if permissions are denied
+- Uses `ActivityResultContracts.RequestMultiplePermissions` to request `RECEIVE_SMS` and `READ_SMS`
+- Shows basic status UI and request button
+- Future: rationale UI and settings redirect if denied
 
 **Why:** Respecting runtime permissions is essential for user trust and Play Store compliance.
 

@@ -32,7 +32,7 @@ Each phase builds upon the last. You can build and test after every phase.
   - Text: Permission status (`Granted` / `Denied`)
 
 **Deliverable:**  
-App that requests permissions and displays the result.
+App requests permissions and displays the result. Implemented in `MainActivity` with Compose UI. Manifest declares `RECEIVE_SMS`, `READ_SMS`, and `INTERNET`.
 
 ---
 
