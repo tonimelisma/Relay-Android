@@ -10,6 +10,7 @@ This document describes the technical architecture of the Android SMS Sync app, 
 
 - SMS will be received via a manifest-declared `BroadcastReceiver` (Phase 2+)
 - SMS will be received via a manifest-declared `BroadcastReceiver` (Phase 2+). Implemented as `SmsReceiver` pushing into `SmsInMemoryStore` for now.
+- MMS notifications will be received via WAP push (`MmsReceiver`) and surfaced minimally; manual provider scans can enrich display. RCS is heuristic via MMS DB or `content://im/chat` where available.
 - Messages will be stored in a local Room database (Phase 4+)
 - A background WorkManager job will upload unsynced messages (Phase 5+)
 - The UI will observe the local DB and reflect sync status (Phase 4+)
@@ -57,7 +58,7 @@ This document describes the technical architecture of the Android SMS Sync app, 
 
 ### 4. UI Layer
 
-- Built using MVVM: ViewModel + LiveData or StateFlow. For Phase 2, Compose directly observes a `StateFlow` from `SmsInMemoryStore`.
+- Built using MVVM: ViewModel + LiveData or StateFlow. For Phase 2, Compose directly observes a `StateFlow` from `SmsInMemoryStore` using `collectAsState()`.
 - UI shows:
   - List of messages
   - Sync status

@@ -21,7 +21,8 @@ class SmsReceiver : BroadcastReceiver() {
                     SmsItem(
                         sender = sender,
                         body = body,
-                        timestamp = now
+                        timestamp = now,
+                        kind = MessageKind.SMS
                     )
                 )
             }

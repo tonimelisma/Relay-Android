@@ -36,7 +36,7 @@ App requests permissions and displays the result. Implemented in `MainActivity` 
 
 ---
 
-### 🟡 Phase 2 – Log Received SMS in UI
+### 🟡 Phase 2 – Log Received SMS/MMS in UI
 
 **Objective:** Show SMS received via `BroadcastReceiver`.
 
@@ -44,9 +44,11 @@ App requests permissions and displays the result. Implemented in `MainActivity` 
 - Register a `BroadcastReceiver` for `android.provider.Telephony.SMS_RECEIVED`
 - Parse sender + body from each received message
 - Append message to an in-app list (RecyclerView or simple list)
+- Register a `BroadcastReceiver` for MMS notifications (`WAP_PUSH_RECEIVED` with `application/vnd.wap.mms-message`) and surface a minimal entry
+- Add a manual "Scan MMS/RCS" button to query `content://mms` (and heuristically RCS)
 
 **Deliverable:**  
-SMS appear in UI as they arrive (even in background). Implemented via manifest `SmsReceiver` pushing into an in-memory `StateFlow` consumed by Compose UI.
+SMS and MMS notifications appear in UI as they arrive (even in background). Implemented via manifest `SmsReceiver`/`MmsReceiver` pushing into an in-memory `StateFlow` consumed by Compose UI. Manual scan shows MMS and any heuristic RCS entries.
 
 ---
 

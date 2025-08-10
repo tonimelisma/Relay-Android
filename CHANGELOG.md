@@ -6,6 +6,15 @@
 
 ## 0.2.1 - Debug Logging Enhancements
 
+## 0.3.0 - MVP MMS + RCS Scan
+
+- Add `RECEIVE_MMS` and `RECEIVE_WAP_PUSH` permissions
+- Add `MmsReceiver` to surface MMS notifications via WAP push
+- Add `MessageScanner` with manual scan for MMS and heuristic RCS
+- Update `MainActivity` to collect `StateFlow` and add "Scan MMS/RCS" button
+- Build/tests passing
+
+
 - Introduce `AppLogger` utility with safe fallbacks for unit tests
 - Add detailed Logcat statements in `MainActivity`, `SmsReceiver`, and `SmsInMemoryStore`
 - Build and unit tests passing

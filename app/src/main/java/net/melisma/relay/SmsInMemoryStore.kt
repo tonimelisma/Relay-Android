@@ -3,10 +3,13 @@ package net.melisma.relay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
+enum class MessageKind { SMS, MMS, RCS }
+
 data class SmsItem(
     val sender: String,
     val body: String,
-    val timestamp: Long
+    val timestamp: Long,
+    val kind: MessageKind = MessageKind.SMS
 )
 
 object SmsInMemoryStore {

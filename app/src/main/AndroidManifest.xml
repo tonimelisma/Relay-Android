@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- MMS notification (WAP push) reception -->
+    <uses-permission android:name="android.permission.RECEIVE_MMS" />
+    <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
 
     <!-- Optional: App can run on devices without telephony -->
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
@@ -19,6 +22,14 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Relay">
+        <receiver
+            android:name=".MmsReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.WAP_PUSH_RECEIVED" />
+                <data android:mimeType="application/vnd.wap.mms-message" />
+            </intent-filter>
+        </receiver>
         <receiver
             android:name=".SmsReceiver"
             android:exported="true"

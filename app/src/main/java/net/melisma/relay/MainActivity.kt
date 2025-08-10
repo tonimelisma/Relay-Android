@@ -19,6 +19,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +29,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -98,11 +101,29 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
             Text("Request SMS Permissions")
         }
 
-        val items = SmsInMemoryStore.messages.value
+        val scope = rememberCoroutineScope()
+        Button(onClick = {
+            AppLogger.i("Manual scan: MMS/RCS")
+            scope.launch {
+                val mms = MessageScanner.scanMms(context.contentResolver)
+                val rcs = MessageScanner.scanRcsHeuristics(context.contentResolver)
+                AppLogger.i("Manual scan found mms=${mms.size} rcs=${rcs.size}")
+                (mms + rcs).forEach { SmsInMemoryStore.addMessage(it) }
+            }
+        }) {
+            Text("Scan MMS/RCS")
+        }
+
+        val items by SmsInMemoryStore.messages.collectAsState(initial = emptyList())
         AppLogger.d("Rendering messages list size=${items.size}")
         LazyColumn {
             items(items = items) { item ->
-                Text(text = "${item.sender}: ${item.body}")
+                val prefix = when (item.kind) {
+                    MessageKind.SMS -> "SMS"
+                    MessageKind.MMS -> "MMS"
+                    MessageKind.RCS -> "RCS"
+                }
+                Text(text = "[$prefix] ${item.sender}: ${item.body}")
             }
         }
     }
