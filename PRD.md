@@ -45,10 +45,10 @@ App requests permissions and displays the result. Implemented in `MainActivity` 
 - Parse sender + body from each received message
 - Append message to an in-app list (RecyclerView or simple list)
 - Register a `BroadcastReceiver` for MMS notifications (`WAP_PUSH_RECEIVED` with `application/vnd.wap.mms-message`) and surface a minimal entry
-- Add a manual "Scan MMS/RCS" button to query `content://mms` (and heuristically RCS)
+- Add a manual "Scan SMS/MMS/RCS" button to query `content://sms` (inbox), `content://mms` (+ `content://mms/part`, `content://mms/<id>/addr`), and heuristically surface RCS (incl. best-effort `content://im/chat` where accessible)
 
 **Deliverable:**  
-SMS and MMS notifications appear in UI as they arrive (even in background). Implemented via manifest `SmsReceiver`/`MmsReceiver` pushing into an in-memory `StateFlow` consumed by Compose UI. Manual scan shows MMS and any heuristic RCS entries.
+SMS and MMS notifications appear in UI as they arrive (even in background). Implemented via manifest `SmsReceiver`/`MmsReceiver` pushing into an in-memory `StateFlow` consumed by Compose UI with `collectAsState()`. Manual scan shows recent SMS, MMS (text parts + sender), and any heuristic RCS entries.
 
 ---
 
