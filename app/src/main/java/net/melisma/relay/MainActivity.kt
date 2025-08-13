@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun PermissionsScreen(modifier: Modifier = Modifier) {
-    AppLogger.d("PermissionsScreen composed")
+    LaunchedEffect(Unit) { AppLogger.d("PermissionsScreen first compose") }
     var permissionsGranted by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -74,13 +74,13 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
             val receiveGranted = results[Manifest.permission.RECEIVE_SMS] == true
             val receiveMmsGranted = results[Manifest.permission.RECEIVE_MMS] == true
             val receiveWapGranted = results[Manifest.permission.RECEIVE_WAP_PUSH] == true
-            permissionsGranted = readGranted && receiveGranted
+			permissionsGranted = readGranted && receiveGranted && receiveMmsGranted && receiveWapGranted
             AppLogger.i("Permissions updated. READ_SMS=$readGranted, RECEIVE_SMS=$receiveGranted, RECEIVE_MMS=$receiveMmsGranted, RECEIVE_WAP_PUSH=$receiveWapGranted, all=$permissionsGranted")
         }
     )
 
     // Check current permission state on first composition
-    LaunchedEffect(context) {
+	LaunchedEffect(context) {
         AppLogger.d("Checking initial permission state")
         val read = ContextCompat.checkSelfPermission(
             context, Manifest.permission.READ_SMS
@@ -94,7 +94,7 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
         val receiveWap = ContextCompat.checkSelfPermission(
             context, Manifest.permission.RECEIVE_WAP_PUSH
         ) == PackageManager.PERMISSION_GRANTED
-        permissionsGranted = read && receive
+		permissionsGranted = read && receive && receiveMms && receiveWap
         AppLogger.i("Initial permissions READ_SMS=$read, RECEIVE_SMS=$receive, RECEIVE_MMS=$receiveMms, RECEIVE_WAP_PUSH=$receiveWap, all=$permissionsGranted")
     }
 
@@ -124,31 +124,43 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
             val db = AppDatabase.getInstance(context)
             MessageRepository(db.messageDao())
         }
-        Button(onClick = {
-            AppLogger.i("Manual scan: SMS/MMS/RCS")
-            scope.launch {
+
+        if (permissionsGranted) {
+            // Auto-ingest on first render
+            LaunchedEffect("auto_ingest") {
                 repo.ingestFromProviders(context.contentResolver)
-                AppLogger.i("Manual scan ingested into DB")
             }
-        }) {
-            Text("Scan SMS/MMS/RCS")
+            Button(onClick = {
+                AppLogger.i("Manual scan: SMS/MMS/RCS")
+                scope.launch {
+                    repo.ingestFromProviders(context.contentResolver)
+                    AppLogger.i("Manual scan ingested into DB")
+                }
+            }) {
+                Text("Scan SMS/MMS/RCS")
+            }
         }
 
         
 
-        val dao = remember(context) { AppDatabase.getInstance(context).messageDao() }
-        val itemsWithParts by dao.observeMessagesWithParts().collectAsState(initial = emptyList())
-        AppLogger.d("Rendering messages list size=${itemsWithParts.size}")
-        LazyColumn {
-            items(itemsWithParts) { row ->
-                val item = row.message
-                val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(java.util.Date(item.timestamp))
-                Text(text = "$ts [${item.kind}] ${item.address ?: ""}: ${item.body ?: ""}")
-                val imgPart = row.parts.firstOrNull { it.isImage == true && it.data != null }
-                if (imgPart != null) {
-                    val bmp = remember(imgPart.partId) { BitmapFactory.decodeByteArray(imgPart.data, 0, imgPart.data!!.size) }
-                    if (bmp != null) {
-                        Image(bitmap = bmp.asImageBitmap(), contentDescription = null, modifier = Modifier.height(100.dp))
+        if (permissionsGranted) {
+            val dao = remember(context) { AppDatabase.getInstance(context).messageDao() }
+            val itemsFlow = remember(dao) { dao.observeMessagesWithParts().distinctUntilChanged() }
+            val itemsWithParts by itemsFlow.collectAsState(initial = emptyList())
+            LaunchedEffect(itemsWithParts.size) {
+                AppLogger.d("Rendering messages list size=${itemsWithParts.size}")
+            }
+            LazyColumn {
+                items(itemsWithParts) { row ->
+                    val item = row.message
+                    val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(java.util.Date(item.timestamp))
+                    Text(text = "$ts [${item.kind}] ${item.address ?: ""}: ${item.body ?: ""}")
+                    val imgPart = row.parts.firstOrNull { it.isImage == true && it.data != null }
+                    if (imgPart != null) {
+                        val bmp = remember(imgPart.partId) { BitmapFactory.decodeByteArray(imgPart.data, 0, imgPart.data!!.size) }
+                        if (bmp != null) {
+                            Image(bitmap = bmp.asImageBitmap(), contentDescription = null, modifier = Modifier.height(100.dp))
+                        }
                     }
                 }
             }

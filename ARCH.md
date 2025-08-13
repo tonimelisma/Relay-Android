@@ -1,17 +1,16 @@
-# 📐 Architecture Document: Android SMS Sync App
+# 📐 Architecture Document: Android SMS/MMS/RCS Sync App
 
 ## Overview
 
-This document describes the technical architecture of the Android SMS Sync app, which listens for incoming SMS messages on Android devices and uploads them to a cloud backend. The app **does not send or modify SMS messages**. It is designed for privacy, stability, and minimal battery impact.
+This document describes the technical architecture of the Android SMS/MMS/RCS Sync app, which listens for incoming SMS/MMS and heuristic RCS, displays them in a unified list, and later uploads them to a cloud backend. The app **does not send or modify messages**. It is designed for privacy, stability, and minimal battery impact.
 
 ---
 
 ## 🧱 High-Level Architecture Summary
 
-- SMS will be received via a manifest-declared `BroadcastReceiver` (Phase 2+)
-- SMS will be received via a manifest-declared `BroadcastReceiver` (Phase 2+). Implemented as `SmsReceiver` pushing into `SmsInMemoryStore` for now.
-- MMS notifications will be received via WAP push (`MmsReceiver`) and surfaced minimally; a manual provider scan reads MMS text parts (`content://mms/part`) and sender (`content://mms/<id>/addr`). RCS is heuristic via MMS DB content types and optional `content://im/chat` where available.
-- Messages will be stored in a local Room database (Phase 4+)
+- SMS is received via a manifest-declared `BroadcastReceiver` (`SmsReceiver`).
+- MMS notifications are received via WAP push (`MmsReceiver`, `application/vnd.wap.mms-message`). Manual provider scan reads MMS text parts (`content://mms/part`) and sender (`content://mms/<id>/addr`). RCS is heuristic via MMS DB content types and optional `content://im/chat` where available.
+- Messages are stored in a local Room database with MMS parts/addresses.
 - A background WorkManager job will upload unsynced messages (Phase 5+)
 - The UI will observe the local DB and reflect sync status (Phase 4+)
 - Messages will be deduplicated using a content-based hash (Phase 4+)
@@ -40,12 +39,12 @@ This document describes the technical architecture of the Android SMS Sync app, 
     - `id` TEXT PRIMARY KEY (SHA-256 of kind + sender + body + timestamp)
     - `kind` TEXT (SMS|MMS|RCS)
     - `threadId` INTEGER NULL, `address` TEXT NULL, `body` TEXT NULL
-    - `timestamp` INTEGER (ms), `dateSent` INTEGER NULL (ms), `read` INTEGER NULL
+    - `timestamp` INTEGER (ms), `dateSent` INTEGER NULL (ms), `read` INTEGER NULL, `synced` INTEGER NULL (0/1; default 0)
     - `smsJson` TEXT NULL, `mmsJson` TEXT NULL, `convJson` TEXT NULL
   - `mms_parts` (Room entity `MmsPartEntity`)
     - `partId` TEXT PRIMARY KEY, `messageId` TEXT (FK)
     - `seq` INTEGER NULL, `ct` TEXT NULL, `text` TEXT NULL
-    - `data` BLOB NULL (full image bytes for image parts)
+    - `data` BLOB NULL (full image bytes for image parts; used directly for small previews)
     - `name` TEXT NULL, `chset` TEXT NULL, `cid` TEXT NULL, `cl` TEXT NULL, `cttS` TEXT NULL, `cttT` TEXT NULL
     - `isImage` INTEGER NULL (0/1)
   - `mms_addr` (Room entity `MmsAddrEntity`, planned ingestion)
@@ -53,6 +52,12 @@ This document describes the technical architecture of the Android SMS Sync app, 
 - UI observes a transactional relation (`@Transaction` `observeMessagesWithParts()`) and renders small image previews from stored bytes
 - Deduplication via `messages.id` primary key (content-based hash)
 - MMS timestamps (seconds) normalized to ms for unified ordering in the repository
+
+### Incremental Ingest & Permissions Gate
+
+- Incremental ingest reads providers only for items with `timestamp > MAX(timestamp)` per kind (SMS/MMS/RCS) and inserts new rows. Inserts are batched transactionally to minimize UI emissions.
+- Ingest runs automatically at app start (when permissions are granted) and on-demand via a button.
+- Permissions gate: if required permissions (READ_SMS, RECEIVE_SMS, RECEIVE_MMS, RECEIVE_WAP_PUSH) are missing, the UI renders only the explanation + request flow; list is hidden until all are granted.
 
 **Why:** Room provides type-safe queries, lifecycle awareness, and easy testing support.
 
@@ -73,7 +78,7 @@ This document describes the technical architecture of the Android SMS Sync app, 
 
 ### 4. UI Layer
 
-- Built using MVVM: ViewModel + LiveData or StateFlow. For Phase 2, Compose directly observes a `StateFlow` from `SmsInMemoryStore` using `collectAsState()`. A manual "Scan SMS/MMS/RCS" button calls `MessageScanner` to query providers (SMS inbox, MMS + parts/addr, and heuristic RCS).
+- Compose observes Room Flow `observeMessagesWithParts()` using `collectAsState()`; flow is wrapped with `distinctUntilChanged()` to reduce redundant recompositions. A "Scan SMS/MMS/RCS" button triggers `MessageRepository.ingestFromProviders()`.
 - UI shows:
   - List of messages
   - Sync status
@@ -108,7 +113,7 @@ This document describes the technical architecture of the Android SMS Sync app, 
 
 ### 7. Deduplication Strategy
 
-- Messages are uniquely identified by `SHA-256(sender + timestamp + body)`
+- Messages are uniquely identified by `SHA-256(kind + sender + body + timestamp)`
 - Hash is used as the primary key in Room
 - Hash is sent with cloud uploads to prevent re-processing
 

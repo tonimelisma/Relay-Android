@@ -18,6 +18,7 @@ data class MessageEntity(
     val timestamp: Long,
     val dateSent: Long?,
     val read: Int?,
+    val synced: Int? = 0,
     val smsJson: String?,
     val mmsJson: String?,
     val convJson: String?

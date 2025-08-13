@@ -1,15 +1,17 @@
-# 📱 Android SMS Sync App – Product Requirements Document (PRD)
+# 📱 Android SMS/MMS/RCS Sync App – Product Requirements Document (PRD)
 
 ## Overview
 
 **Goal:**  
-Create a lightweight Android app that listens for incoming SMS messages and uploads them to a cloud backend. The app will **not send or write** SMS messages — only read and transmit.
+Create a lightweight Android app that listens for incoming SMS/MMS/RCS messages, displays them in a unified list, and later uploads them to a cloud backend. The app will **not send or write** messages — only read and (later) upload.
 
 **Platform:** Android  
 **Minimum SDK:** 23 (Android 6.0)  
 **Permissions Required:**  
 - `RECEIVE_SMS`
 - `READ_SMS`
+- `RECEIVE_MMS`
+- `RECEIVE_WAP_PUSH`
 - `INTERNET`
 
 ---
@@ -48,7 +50,7 @@ App requests permissions and displays the result. Implemented in `MainActivity` 
 - Add a manual "Scan SMS/MMS/RCS" button to query `content://sms` (inbox), `content://mms` (+ `content://mms/part`, `content://mms/<id>/addr`), and heuristically surface RCS (incl. best-effort `content://im/chat` where accessible)
 
 **Deliverable:**  
-SMS and MMS notifications appear in UI as they arrive (even in background). Implemented via manifest `SmsReceiver`/`MmsReceiver` pushing into an in-memory `StateFlow` consumed by Compose UI with `collectAsState()`. Manual scan shows recent SMS, MMS (text parts + sender), and any heuristic RCS entries.
+SMS and MMS notifications appear in UI as they arrive (even in background). Implemented via manifest `SmsReceiver`/`MmsReceiver`. Manual scan shows recent SMS, MMS (text parts + sender), and any heuristic RCS entries. UI observes changes reactively.
 
 ---
 
@@ -67,7 +69,7 @@ App shows historical and live messages together.
 
 ---
 
-### 🔵 Phase 4 – Add Local Persistence (Optional)
+### 🔵 Phase 4 – Add Local Persistence
 
 **Objective:** Store messages on device for reload after app restart.
 
@@ -82,6 +84,7 @@ App shows historical and live messages together.
     - `timestamp` INTEGER (ms since epoch)
     - `dateSent` INTEGER NULL (ms since epoch)
     - `read` INTEGER NULL (0/1)
+    - `synced` INTEGER NULL (0/1; default 0)
     - `smsJson` TEXT NULL (raw SMS row JSON if desired)
     - `mmsJson` TEXT NULL (raw MMS row JSON if desired)
     - `convJson` TEXT NULL (raw conversations row JSON if desired)
@@ -91,7 +94,7 @@ App shows historical and live messages together.
     - `seq` INTEGER NULL
     - `ct` TEXT NULL (MIME type, e.g. text/plain, image/jpeg)
     - `text` TEXT NULL (for text parts)
-    - `data` BLOB NULL (full bytes for image parts; used for UI thumbnails)
+    - `data` BLOB NULL (full bytes for image parts; used directly for small previews)
     - `name` TEXT NULL, `chset` TEXT NULL, `cid` TEXT NULL, `cl` TEXT NULL, `cttS` TEXT NULL, `cttT` TEXT NULL
     - `isImage` INTEGER NULL (0/1 convenience flag)
   - `mms_addr`
@@ -100,13 +103,22 @@ App shows historical and live messages together.
     - `address` TEXT NULL
     - `type` INTEGER NULL (137=from, 151=to, 130=cc)
     - `charset` TEXT NULL
-- Load stored messages via Room Flow on startup; UI observes `@Transaction` relation (messages + parts)
+- Load stored messages via Room Flow on startup; UI observes `@Transaction` relation (messages + parts) for a unified list
 - Prevent duplicates via primary-key hash
 - MMS date (seconds) normalized to ms for unified ordering
 - Optional: "Clear History" button
 
+### 🔶 Phase 4.1 – Incremental Local Sync & Permissions Gate (MVP)
+
+**Objective:** Smart incremental ingest from providers gated by permissions.
+
+**Requirements:**
+- Implement ingest that, for each kind (SMS/MMS/RCS), queries new items with `timestamp > MAX(timestamp) WHERE kind = ?` and inserts them
+- Run ingest automatically on app start (if permissions are granted) and via a button
+- Gate UI: if required permissions (READ_SMS, RECEIVE_SMS, RECEIVE_MMS, RECEIVE_WAP_PUSH) are not granted, show only an explanation + permission request button. If granted, show the Scan button and unified message list
+
 **Deliverable:**  
-SMS list persists across app restarts.
+Unified SMS/MMS/RCS list persists across app restarts and updates incrementally.
 
 ---
 

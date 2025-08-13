@@ -15,6 +15,9 @@ interface MessageDao {
     suspend fun insertMessage(message: MessageEntity)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMessages(messages: List<MessageEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertParts(parts: List<MmsPartEntity>)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -29,6 +32,16 @@ interface MessageDao {
 
     @Query("DELETE FROM messages")
     suspend fun clearAll()
+
+    @Query("SELECT MAX(timestamp) FROM messages WHERE kind = :kind")
+    suspend fun getMaxTimestampForKind(kind: String): Long?
+
+    @Transaction
+    suspend fun insertBatch(messages: List<MessageEntity>, parts: List<MmsPartEntity>, addrs: List<MmsAddrEntity> = emptyList()) {
+        if (messages.isNotEmpty()) insertMessages(messages)
+        if (parts.isNotEmpty()) insertParts(parts)
+        if (addrs.isNotEmpty()) insertAddrs(addrs)
+    }
 }
 
 data class MessageWithParts(
