@@ -5,6 +5,49 @@ import android.net.Uri
 import android.provider.Telephony
 
 object MessageScanner {
+    fun scanSms(contentResolver: ContentResolver, limit: Int = 50): List<SmsItem> {
+        val results = mutableListOf<SmsItem>()
+        AppLogger.d("MessageScanner.scanSms start")
+        val projection = arrayOf(
+            Telephony.Sms._ID,
+            Telephony.Sms.ADDRESS,
+            Telephony.Sms.BODY,
+            Telephony.Sms.DATE,
+            Telephony.Sms.TYPE
+        )
+        val selection = "${Telephony.Sms.TYPE} = ?"
+        val selectionArgs = arrayOf(Telephony.Sms.MESSAGE_TYPE_INBOX.toString())
+        val sort = "${Telephony.Sms.DATE} DESC"
+        val cursor = contentResolver.query(
+            Telephony.Sms.CONTENT_URI,
+            projection,
+            selection,
+            selectionArgs,
+            sort
+        )
+        cursor?.use { c ->
+            var count = 0
+            val addrCol = c.getColumnIndex(Telephony.Sms.ADDRESS)
+            val bodyCol = c.getColumnIndex(Telephony.Sms.BODY)
+            val dateCol = c.getColumnIndex(Telephony.Sms.DATE)
+            while (c.moveToNext() && count < limit) {
+                val sender = if (addrCol >= 0) c.getString(addrCol) else null
+                val body = if (bodyCol >= 0) c.getString(bodyCol) else null
+                val ts = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
+                results.add(
+                    SmsItem(
+                        sender = sender ?: "<sms>",
+                        body = body ?: "",
+                        timestamp = ts,
+                        kind = MessageKind.SMS
+                    )
+                )
+                count++
+            }
+        }
+        AppLogger.i("MessageScanner.scanSms done count=${results.size}")
+        return results
+    }
     fun scanMms(contentResolver: ContentResolver, limit: Int = 25): List<SmsItem> {
         val results = mutableListOf<SmsItem>()
         val projection = arrayOf("_id", "date", "sub", "ct_t")

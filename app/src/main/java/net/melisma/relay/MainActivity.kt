@@ -64,8 +64,10 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
             AppLogger.d("Permissions result: $results")
             val readGranted = results[Manifest.permission.READ_SMS] == true
             val receiveGranted = results[Manifest.permission.RECEIVE_SMS] == true
+            val receiveMmsGranted = results[Manifest.permission.RECEIVE_MMS] == true
+            val receiveWapGranted = results[Manifest.permission.RECEIVE_WAP_PUSH] == true
             permissionsGranted = readGranted && receiveGranted
-            AppLogger.i("Permissions updated. READ_SMS=$readGranted, RECEIVE_SMS=$receiveGranted, all=$permissionsGranted")
+            AppLogger.i("Permissions updated. READ_SMS=$readGranted, RECEIVE_SMS=$receiveGranted, RECEIVE_MMS=$receiveMmsGranted, RECEIVE_WAP_PUSH=$receiveWapGranted, all=$permissionsGranted")
         }
     )
 
@@ -78,8 +80,14 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
         val receive = ContextCompat.checkSelfPermission(
             context, Manifest.permission.RECEIVE_SMS
         ) == PackageManager.PERMISSION_GRANTED
+        val receiveMms = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECEIVE_MMS
+        ) == PackageManager.PERMISSION_GRANTED
+        val receiveWap = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECEIVE_WAP_PUSH
+        ) == PackageManager.PERMISSION_GRANTED
         permissionsGranted = read && receive
-        AppLogger.i("Initial permissions READ_SMS=$read, RECEIVE_SMS=$receive, all=$permissionsGranted")
+        AppLogger.i("Initial permissions READ_SMS=$read, RECEIVE_SMS=$receive, RECEIVE_MMS=$receiveMms, RECEIVE_WAP_PUSH=$receiveWap, all=$permissionsGranted")
     }
 
     Column(
@@ -94,24 +102,27 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
             requestPermissionsLauncher.launch(
                 arrayOf(
                     Manifest.permission.READ_SMS,
-                    Manifest.permission.RECEIVE_SMS
+                    Manifest.permission.RECEIVE_SMS,
+                    Manifest.permission.RECEIVE_MMS,
+                    Manifest.permission.RECEIVE_WAP_PUSH
                 )
             )
         }) {
-            Text("Request SMS Permissions")
+            Text("Request SMS/MMS Permissions")
         }
 
         val scope = rememberCoroutineScope()
         Button(onClick = {
-            AppLogger.i("Manual scan: MMS/RCS")
+            AppLogger.i("Manual scan: SMS/MMS/RCS")
             scope.launch {
+                val sms = MessageScanner.scanSms(context.contentResolver)
                 val mms = MessageScanner.scanMms(context.contentResolver)
                 val rcs = MessageScanner.scanRcsHeuristics(context.contentResolver)
-                AppLogger.i("Manual scan found mms=${mms.size} rcs=${rcs.size}")
-                (mms + rcs).forEach { SmsInMemoryStore.addMessage(it) }
+                AppLogger.i("Manual scan found sms=${sms.size} mms=${mms.size} rcs=${rcs.size}")
+                (sms + mms + rcs).forEach { SmsInMemoryStore.addMessage(it) }
             }
         }) {
-            Text("Scan MMS/RCS")
+            Text("Scan SMS/MMS/RCS")
         }
 
         val items by SmsInMemoryStore.messages.collectAsState(initial = emptyList())

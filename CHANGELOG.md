@@ -7,6 +7,11 @@
 ## 0.2.1 - Debug Logging Enhancements
 
 ## 0.3.0 - MVP MMS + RCS Scan
+## 0.3.1 - Manual SMS/MMS/RCS Scan
+
+- Add SMS inbox scanner (Telephony.Sms) and wire button to scan SMS+MMS+RCS
+- Update button copy and logs
+
 
 - Add `RECEIVE_MMS` and `RECEIVE_WAP_PUSH` permissions
 - Add `MmsReceiver` to surface MMS notifications via WAP push
