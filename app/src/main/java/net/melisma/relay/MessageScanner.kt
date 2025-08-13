@@ -1,7 +1,6 @@
 package net.melisma.relay
 
 import android.content.ContentResolver
-import android.database.Cursor
 import android.net.Uri
 import android.provider.Telephony
 
@@ -17,19 +16,24 @@ object MessageScanner {
             val idCol = c.getColumnIndex("_id")
             val dateCol = c.getColumnIndex("date")
             val subCol = c.getColumnIndex("sub")
-            val ctCol = c.getColumnIndex("ct_t")
             while (c.moveToNext() && count < limit) {
                 val id = if (idCol >= 0) c.getLong(idCol) else -1L
                 val ts = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
                 val sub = if (subCol >= 0) c.getString(subCol) else null
-                val ct = if (ctCol >= 0) c.getString(ctCol) else null
-                val body = buildString {
-                    if (!sub.isNullOrBlank()) append("sub: ").append(sub)
+
+                val sender = resolveMmsSender(contentResolver, id)
+                val textBody = resolveMmsTextParts(contentResolver, id)
+
+                val finalBody = when {
+                    !textBody.isNullOrBlank() -> textBody
+                    !sub.isNullOrBlank() -> "sub: $sub"
+                    else -> "MMS"
                 }
+
                 results.add(
                     SmsItem(
-                        sender = "<mms:$id>",
-                        body = if (body.isBlank()) "MMS" else body,
+                        sender = sender ?: "<mms:$id>",
+                        body = finalBody,
                         timestamp = ts,
                         kind = MessageKind.MMS
                     )
@@ -39,6 +43,53 @@ object MessageScanner {
         }
         AppLogger.i("MessageScanner.scanMms done count=${results.size}")
         return results
+    }
+
+    private fun resolveMmsTextParts(contentResolver: ContentResolver, mmsId: Long): String? {
+        // Parts table: content://mms/part, where mid = mmsId
+        // Columns typically: _id, ct (MIME), text, _data
+        val partUri = Uri.parse("content://mms/part")
+        val selection = "mid=?"
+        val args = arrayOf(mmsId.toString())
+        val texts = mutableListOf<String>()
+        try {
+            contentResolver.query(partUri, arrayOf("_id", "ct", "text"), selection, args, null)?.use { pc ->
+                val ctCol = pc.getColumnIndex("ct")
+                val textCol = pc.getColumnIndex("text")
+                while (pc.moveToNext()) {
+                    val ct = if (ctCol >= 0) pc.getString(ctCol) else null
+                    if (ct != null && ct.startsWith("text/")) {
+                        val t = if (textCol >= 0) pc.getString(textCol) else null
+                        if (!t.isNullOrBlank()) texts.add(t)
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            AppLogger.w("resolveMmsTextParts failed: ${t.message}")
+        }
+        return if (texts.isEmpty()) null else texts.joinToString(separator = "\n")
+    }
+
+    private fun resolveMmsSender(contentResolver: ContentResolver, mmsId: Long): String? {
+        // Addr table per message: content://mms/<id>/addr, columns include address, type
+        // Heuristic: type=137 is 'from' per common references
+        val addrUri = Uri.parse("content://mms/$mmsId/addr")
+        try {
+            contentResolver.query(addrUri, arrayOf("address", "type"), null, null, null)?.use { ac ->
+                val addrCol = ac.getColumnIndex("address")
+                val typeCol = ac.getColumnIndex("type")
+                while (ac.moveToNext()) {
+                    val type = if (typeCol >= 0) ac.getInt(typeCol) else -1
+                    val address = if (addrCol >= 0) ac.getString(addrCol) else null
+                    if (type == 137 && !address.isNullOrBlank()) {
+                        return address
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            AppLogger.w("resolveMmsSender failed: ${t.message}")
+        }
+        return null
     }
 
     fun scanRcsHeuristics(contentResolver: ContentResolver, limit: Int = 25): List<SmsItem> {
