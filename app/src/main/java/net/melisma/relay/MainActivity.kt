@@ -31,6 +31,8 @@ import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import net.melisma.relay.db.AppDatabase
+import net.melisma.relay.data.MessageRepository
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -112,29 +114,27 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
         }
 
         val scope = rememberCoroutineScope()
+        val repo = remember(context) {
+            val db = AppDatabase.getInstance(context)
+            MessageRepository(db.messageDao())
+        }
         Button(onClick = {
             AppLogger.i("Manual scan: SMS/MMS/RCS")
             scope.launch {
-                val sms = MessageScanner.scanSms(context.contentResolver)
-                val mms = MessageScanner.scanMms(context.contentResolver)
-                val rcs = MessageScanner.scanRcsHeuristics(context.contentResolver)
-                AppLogger.i("Manual scan found sms=${sms.size} mms=${mms.size} rcs=${rcs.size}")
-                (sms + mms + rcs).forEach { SmsInMemoryStore.addMessage(it) }
+                repo.ingestFromProviders(context.contentResolver)
+                AppLogger.i("Manual scan ingested into DB")
             }
         }) {
             Text("Scan SMS/MMS/RCS")
         }
 
-        val items by SmsInMemoryStore.messages.collectAsState(initial = emptyList())
+        
+
+        val items by repo.observeMessages().collectAsState(initial = emptyList())
         AppLogger.d("Rendering messages list size=${items.size}")
         LazyColumn {
             items(items = items) { item ->
-                val prefix = when (item.kind) {
-                    MessageKind.SMS -> "SMS"
-                    MessageKind.MMS -> "MMS"
-                    MessageKind.RCS -> "RCS"
-                }
-                Text(text = "[$prefix] ${item.sender}: ${item.body}")
+                Text(text = "[${item.kind}] ${item.address ?: ""}: ${item.body ?: ""}")
             }
         }
     }

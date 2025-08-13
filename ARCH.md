@@ -34,10 +34,12 @@ This document describes the technical architecture of the Android SMS Sync app, 
 
 ### 2. Local Persistence Layer
 
-- Uses Jetpack Room ORM to store SMS data
-- Messages are stored in a `SmsMessageEntity` table
-- A SHA-256 hash of `(sender + body + timestamp)` is used as the primary key
-- `LiveData` or `StateFlow` is used to observe changes from the UI
+- Uses Jetpack Room ORM to store SMS/MMS/RCS data
+- Schema:
+  - `messages`: id (SHA-256 of kind+sender+body+timestamp), kind (SMS|MMS|RCS), threadId, address, body, timestamp, dateSent, read, `smsJson`, `mmsJson`, `convJson`
+  - `mms_parts`: partId, messageId (FK), seq, ct, text, _data, name, chset, cid, cl, ctt_s, ctt_t
+  - `mms_addr`: rowId, messageId (FK), address, type, charset
+- UI observes a Flow from Room; dedup by primary key hash
 
 **Why:** Room provides type-safe queries, lifecycle awareness, and easy testing support.
 

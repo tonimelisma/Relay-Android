@@ -72,9 +72,12 @@ App shows historical and live messages together.
 **Objective:** Store messages on device for reload after app restart.
 
 **Requirements:**
-- Store SMS messages in local DB (Room, SQLite, or flat file)
-- Load stored messages on startup
-- Prevent duplicates (based on hash of `sender+body+timestamp`)
+- Store SMS/MMS/RCS messages in Room using a unified schema with satellite tables:
+  - `messages`: id (SHA-256 of kind+sender+body+timestamp), kind (SMS|MMS|RCS), threadId, address, body, timestamp, dateSent, read, `smsJson`, `mmsJson`, `convJson`
+  - `mms_parts`: partId, messageId (FK), seq, ct, text, _data, name, chset, cid, cl, ctt_s, ctt_t
+  - `mms_addr`: rowId, messageId (FK), address, type, charset
+- Load stored messages via Flow on startup; UI observes DB
+- Prevent duplicates via primary-key hash
 - Optional: "Clear History" button
 
 **Deliverable:**  
