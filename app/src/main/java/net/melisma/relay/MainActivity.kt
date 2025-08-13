@@ -12,8 +12,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.graphics.asImageBitmap
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import net.melisma.relay.db.AppDatabase
+import net.melisma.relay.db.MessageWithParts
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -31,7 +37,7 @@ import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
-import net.melisma.relay.db.AppDatabase
+// remove duplicate AppDatabase import
 import net.melisma.relay.data.MessageRepository
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -130,11 +136,21 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
 
         
 
-        val items by repo.observeMessages().collectAsState(initial = emptyList())
-        AppLogger.d("Rendering messages list size=${items.size}")
+        val dao = remember(context) { AppDatabase.getInstance(context).messageDao() }
+        val itemsWithParts by dao.observeMessagesWithParts().collectAsState(initial = emptyList())
+        AppLogger.d("Rendering messages list size=${itemsWithParts.size}")
         LazyColumn {
-            items(items = items) { item ->
-                Text(text = "[${item.kind}] ${item.address ?: ""}: ${item.body ?: ""}")
+            items(itemsWithParts) { row ->
+                val item = row.message
+                val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(java.util.Date(item.timestamp))
+                Text(text = "$ts [${item.kind}] ${item.address ?: ""}: ${item.body ?: ""}")
+                val imgPart = row.parts.firstOrNull { it.isImage == true && it.data != null }
+                if (imgPart != null) {
+                    val bmp = remember(imgPart.partId) { BitmapFactory.decodeByteArray(imgPart.data, 0, imgPart.data!!.size) }
+                    if (bmp != null) {
+                        Image(bitmap = bmp.asImageBitmap(), contentDescription = null, modifier = Modifier.height(100.dp))
+                    }
+                }
             }
         }
     }

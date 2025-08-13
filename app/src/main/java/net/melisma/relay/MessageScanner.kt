@@ -61,7 +61,9 @@ object MessageScanner {
             val subCol = c.getColumnIndex("sub")
             while (c.moveToNext() && count < limit) {
                 val id = if (idCol >= 0) c.getLong(idCol) else -1L
-                val ts = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
+                // MMS date column is in seconds; convert to ms
+                val tsRaw = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
+                val ts = if (tsRaw < 10_000_000_000L) tsRaw * 1000 else tsRaw
                 val sub = if (subCol >= 0) c.getString(subCol) else null
 
                 val sender = resolveMmsSender(contentResolver, id)
@@ -88,6 +90,48 @@ object MessageScanner {
         return results
     }
 
+    data class MmsDetailed(
+        val mmsId: Long,
+        val timestampMs: Long,
+        val sender: String?,
+        val subject: String?,
+        val textParts: List<String>,
+        val partMeta: List<MmsPartMeta>
+    )
+
+    data class MmsPartMeta(
+        val partId: Long,
+        val seq: Int?,
+        val ct: String?,
+        val hasData: Boolean,
+        val dataPath: String?
+    )
+
+    fun scanMmsDetailed(contentResolver: ContentResolver, limit: Int = 25): List<MmsDetailed> {
+        val results = mutableListOf<MmsDetailed>()
+        val projection = arrayOf("_id", "date", "sub")
+        val sort = "date DESC"
+        val cursor = contentResolver.query(Telephony.Mms.CONTENT_URI, projection, null, null, sort)
+        cursor?.use { c ->
+            var count = 0
+            val idCol = c.getColumnIndex("_id")
+            val dateCol = c.getColumnIndex("date")
+            val subCol = c.getColumnIndex("sub")
+            while (c.moveToNext() && count < limit) {
+                val id = if (idCol >= 0) c.getLong(idCol) else -1L
+                val tsRaw = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
+                val ts = if (tsRaw < 10_000_000_000L) tsRaw * 1000 else tsRaw
+                val sub = if (subCol >= 0) c.getString(subCol) else null
+                val sender = resolveMmsSender(contentResolver, id)
+                val texts = resolveMmsTextPartsList(contentResolver, id)
+                val parts = resolveMmsPartsMeta(contentResolver, id)
+                results.add(MmsDetailed(id, ts, sender, sub, texts, parts))
+                count++
+            }
+        }
+        return results
+    }
+
     private fun resolveMmsTextParts(contentResolver: ContentResolver, mmsId: Long): String? {
         // Parts table: content://mms/part, where mid = mmsId
         // Columns typically: _id, ct (MIME), text, _data
@@ -111,6 +155,55 @@ object MessageScanner {
             AppLogger.w("resolveMmsTextParts failed: ${t.message}")
         }
         return if (texts.isEmpty()) null else texts.joinToString(separator = "\n")
+    }
+
+    private fun resolveMmsTextPartsList(contentResolver: ContentResolver, mmsId: Long): List<String> {
+        val partUri = Uri.parse("content://mms/part")
+        val selection = "mid=?"
+        val args = arrayOf(mmsId.toString())
+        val texts = mutableListOf<String>()
+        try {
+            contentResolver.query(partUri, arrayOf("_id", "ct", "text"), selection, args, null)?.use { pc ->
+                val ctCol = pc.getColumnIndex("ct")
+                val textCol = pc.getColumnIndex("text")
+                while (pc.moveToNext()) {
+                    val ct = if (ctCol >= 0) pc.getString(ctCol) else null
+                    if (ct != null && ct.startsWith("text/")) {
+                        val t = if (textCol >= 0) pc.getString(textCol) else null
+                        if (!t.isNullOrBlank()) texts.add(t)
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            AppLogger.w("resolveMmsTextPartsList failed: ${t.message}")
+        }
+        return texts
+    }
+
+    private fun resolveMmsPartsMeta(contentResolver: ContentResolver, mmsId: Long): List<MmsPartMeta> {
+        val partUri = Uri.parse("content://mms/part")
+        val selection = "mid=?"
+        val args = arrayOf(mmsId.toString())
+        val metas = mutableListOf<MmsPartMeta>()
+        try {
+            contentResolver.query(partUri, arrayOf("_id", "ct", "seq", "_data"), selection, args, null)?.use { pc ->
+                val idCol = pc.getColumnIndex("_id")
+                val ctCol = pc.getColumnIndex("ct")
+                val seqCol = pc.getColumnIndex("seq")
+                val dataCol = pc.getColumnIndex("_data")
+                while (pc.moveToNext()) {
+                    val pid = if (idCol >= 0) pc.getLong(idCol) else -1L
+                    val ct = if (ctCol >= 0) pc.getString(ctCol) else null
+                    val seq = if (seqCol >= 0) pc.getInt(seqCol) else null
+                    val dataPath = if (dataCol >= 0) pc.getString(dataCol) else null
+                    val hasData = !dataPath.isNullOrBlank()
+                    metas.add(MmsPartMeta(pid, seq, ct, hasData, dataPath))
+                }
+            }
+        } catch (t: Throwable) {
+            AppLogger.w("resolveMmsPartsMeta failed: ${t.message}")
+        }
+        return metas
     }
 
     private fun resolveMmsSender(contentResolver: ContentResolver, mmsId: Long): String? {

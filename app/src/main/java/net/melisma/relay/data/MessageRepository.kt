@@ -8,8 +8,8 @@ import net.melisma.relay.MessageScanner
 import net.melisma.relay.db.AppDatabase
 import net.melisma.relay.db.MessageDao
 import net.melisma.relay.db.MessageEntity
-import net.melisma.relay.db.MmsAddrEntity
 import net.melisma.relay.db.MmsPartEntity
+import android.net.Uri
 import java.security.MessageDigest
 
 class MessageRepository(private val dao: MessageDao) {
@@ -19,7 +19,8 @@ class MessageRepository(private val dao: MessageDao) {
         val sms = MessageScanner.scanSms(cr)
         val mms = MessageScanner.scanMms(cr)
         val rcs = MessageScanner.scanRcsHeuristics(cr)
-        val all = sms + mms + rcs
+        // Merge and sort by timestamp desc for unified ordering
+        val all = (sms + mms + rcs).sortedByDescending { it.timestamp }
         for (item in all) {
             val id = hashFor(item.kind.name, item.sender, item.body, item.timestamp)
             val entity = MessageEntity(
@@ -27,7 +28,7 @@ class MessageRepository(private val dao: MessageDao) {
                 kind = item.kind.name,
                 threadId = null,
                 address = item.sender,
-                body = item.body,
+                body = materializeBody(item, cr),
                 timestamp = item.timestamp,
                 dateSent = null,
                 read = null,
@@ -36,7 +37,52 @@ class MessageRepository(private val dao: MessageDao) {
                 convJson = null
             )
             dao.insertMessage(entity)
-            // For MVP, we are not persisting parts/addr from scanner here; a follow-up can add it
+            if (item.kind == MessageKind.MMS) {
+                // Store image parts with small thumbnail
+                val detailed = MessageScanner.scanMmsDetailed(cr, limit = 50).firstOrNull { it.timestampMs == item.timestamp }
+                val partEntities = detailed?.partMeta?.mapNotNull { meta ->
+                    val isImage = meta.ct?.startsWith("image/") == true
+                    val blob = if (isImage) readPartBytes(cr, meta.partId) else null
+                    MmsPartEntity(
+                        partId = meta.partId.toString(),
+                        messageId = id,
+                        seq = meta.seq,
+                        ct = meta.ct,
+                        text = null,
+                        data = blob,
+                        name = null,
+                        chset = null,
+                        cid = null,
+                        cl = null,
+                        cttS = null,
+                        cttT = null,
+                        isImage = isImage
+                    )
+                } ?: emptyList()
+                if (partEntities.isNotEmpty()) dao.insertParts(partEntities)
+            }
+        }
+    }
+
+    private fun materializeBody(item: net.melisma.relay.SmsItem, cr: ContentResolver): String? {
+        if (item.kind != MessageKind.MMS) return item.body
+        // If MMS body is null/empty, check if there are non-text parts to label as [Picture]
+        val mmsId = item.sender?.substringAfter("<mms:")?.substringBefore(">")?.toLongOrNull()
+        if (!item.body.isNullOrBlank()) return item.body
+        if (mmsId != null) {
+            val parts = MessageScanner.scanMmsDetailed(cr, limit = 1).firstOrNull { it.mmsId == mmsId }
+            val hasImage = parts?.partMeta?.any { it.ct?.startsWith("image/") == true } == true
+            if (hasImage) return "[Picture]"
+        }
+        return "MMS"
+    }
+
+    private fun readPartBytes(cr: ContentResolver, partId: Long): ByteArray? {
+        return try {
+            val uri = Uri.parse("content://mms/part/$partId")
+            cr.openInputStream(uri)?.use { it.readBytes() }
+        } catch (t: Throwable) {
+            null
         }
     }
 

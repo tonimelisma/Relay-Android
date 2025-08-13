@@ -12,6 +12,13 @@
 - Add SMS inbox scanner (Telephony.Sms) and wire button to scan SMS+MMS+RCS
 - Update button copy and logs
 
+## 0.4.0 - Local persistence (Room) + MMS images
+
+- Add Room DB (`messages`, `mms_parts`, `mms_addr`)
+- Store MMS image bytes in DB; render small previews in UI
+- Unified, timestamp-sorted list across SMS/MMS/RCS
+- Migrated to KSP for annotation processing
+
 
 - Add `RECEIVE_MMS` and `RECEIVE_WAP_PUSH` permissions
 - Add `MmsReceiver` to surface MMS notifications via WAP push

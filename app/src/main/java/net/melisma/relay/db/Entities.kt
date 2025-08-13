@@ -41,13 +41,14 @@ data class MmsPartEntity(
     val seq: Int?,
     val ct: String?,
     val text: String?,
-    val dataPath: String?,
+    val data: ByteArray?,
     val name: String?,
     val chset: String?,
     val cid: String?,
     val cl: String?,
     val cttS: String?,
-    val cttT: String?
+    val cttT: String?,
+    val isImage: Boolean?
 )
 
 @Entity(
