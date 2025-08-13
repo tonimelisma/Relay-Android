@@ -73,11 +73,36 @@ App shows historical and live messages together.
 
 **Requirements:**
 - Store SMS/MMS/RCS messages in Room using a unified schema with satellite tables:
-  - `messages`: id (SHA-256 of kind+sender+body+timestamp), kind (SMS|MMS|RCS), threadId, address, body, timestamp, dateSent, read, `smsJson`, `mmsJson`, `convJson`
-  - `mms_parts`: partId, messageId (FK), seq, ct, text, _data, name, chset, cid, cl, ctt_s, ctt_t
-  - `mms_addr`: rowId, messageId (FK), address, type, charset
-- Load stored messages via Flow on startup; UI observes DB
+  - `messages`
+    - `id` TEXT PRIMARY KEY (SHA-256 of kind + sender + body + timestamp)
+    - `kind` TEXT (SMS|MMS|RCS)
+    - `threadId` INTEGER NULL
+    - `address` TEXT NULL
+    - `body` TEXT NULL
+    - `timestamp` INTEGER (ms since epoch)
+    - `dateSent` INTEGER NULL (ms since epoch)
+    - `read` INTEGER NULL (0/1)
+    - `smsJson` TEXT NULL (raw SMS row JSON if desired)
+    - `mmsJson` TEXT NULL (raw MMS row JSON if desired)
+    - `convJson` TEXT NULL (raw conversations row JSON if desired)
+  - `mms_parts`
+    - `partId` TEXT PRIMARY KEY (MMS part id)
+    - `messageId` TEXT NOT NULL (FK → messages.id)
+    - `seq` INTEGER NULL
+    - `ct` TEXT NULL (MIME type, e.g. text/plain, image/jpeg)
+    - `text` TEXT NULL (for text parts)
+    - `data` BLOB NULL (full bytes for image parts; used for UI thumbnails)
+    - `name` TEXT NULL, `chset` TEXT NULL, `cid` TEXT NULL, `cl` TEXT NULL, `cttS` TEXT NULL, `cttT` TEXT NULL
+    - `isImage` INTEGER NULL (0/1 convenience flag)
+  - `mms_addr`
+    - `rowId` INTEGER PRIMARY KEY AUTOINCREMENT
+    - `messageId` TEXT NOT NULL (FK → messages.id)
+    - `address` TEXT NULL
+    - `type` INTEGER NULL (137=from, 151=to, 130=cc)
+    - `charset` TEXT NULL
+- Load stored messages via Room Flow on startup; UI observes `@Transaction` relation (messages + parts)
 - Prevent duplicates via primary-key hash
+- MMS date (seconds) normalized to ms for unified ordering
 - Optional: "Clear History" button
 
 **Deliverable:**  

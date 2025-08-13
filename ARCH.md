@@ -35,11 +35,24 @@ This document describes the technical architecture of the Android SMS Sync app, 
 ### 2. Local Persistence Layer
 
 - Uses Jetpack Room ORM to store SMS/MMS/RCS data
-- Schema:
-  - `messages`: id (SHA-256 of kind+sender+body+timestamp), kind (SMS|MMS|RCS), threadId, address, body, timestamp, dateSent, read, `smsJson`, `mmsJson`, `convJson`
-  - `mms_parts`: partId, messageId (FK), seq, ct, text, _data, name, chset, cid, cl, ctt_s, ctt_t
-  - `mms_addr`: rowId, messageId (FK), address, type, charset
-- UI observes a Flow from Room; dedup by primary key hash
+- Schema (current implementation):
+  - `messages` (Room entity `MessageEntity`)
+    - `id` TEXT PRIMARY KEY (SHA-256 of kind + sender + body + timestamp)
+    - `kind` TEXT (SMS|MMS|RCS)
+    - `threadId` INTEGER NULL, `address` TEXT NULL, `body` TEXT NULL
+    - `timestamp` INTEGER (ms), `dateSent` INTEGER NULL (ms), `read` INTEGER NULL
+    - `smsJson` TEXT NULL, `mmsJson` TEXT NULL, `convJson` TEXT NULL
+  - `mms_parts` (Room entity `MmsPartEntity`)
+    - `partId` TEXT PRIMARY KEY, `messageId` TEXT (FK)
+    - `seq` INTEGER NULL, `ct` TEXT NULL, `text` TEXT NULL
+    - `data` BLOB NULL (full image bytes for image parts)
+    - `name` TEXT NULL, `chset` TEXT NULL, `cid` TEXT NULL, `cl` TEXT NULL, `cttS` TEXT NULL, `cttT` TEXT NULL
+    - `isImage` INTEGER NULL (0/1)
+  - `mms_addr` (Room entity `MmsAddrEntity`, planned ingestion)
+    - `rowId` INTEGER PK, `messageId` TEXT (FK), `address` TEXT NULL, `type` INTEGER NULL, `charset` TEXT NULL
+- UI observes a transactional relation (`@Transaction` `observeMessagesWithParts()`) and renders small image previews from stored bytes
+- Deduplication via `messages.id` primary key (content-based hash)
+- MMS timestamps (seconds) normalized to ms for unified ordering in the repository
 
 **Why:** Room provides type-safe queries, lifecycle awareness, and easy testing support.
 
