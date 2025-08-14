@@ -69,10 +69,9 @@ Once the default SMS app downloads an MMS, it is stored in the system’s **MMS 
 
 ```xml
 <uses-permission android:name="android.permission.READ_SMS" />
-<uses-permission android:name="android.permission.READ_MMS" />
 ```
 
-> On modern Android, `READ_MMS` is part of the SMS permission group and is requested at runtime along with `READ_SMS`.
+> This app does not use `READ_MMS`. On modern Android, MMS DB access falls under the SMS permission group.
 
 **Query example:**
 

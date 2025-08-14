@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.melisma.relay.MessageKind
+import net.melisma.relay.AppLogger
 import net.melisma.relay.MessageScanner
 import net.melisma.relay.db.MessageDao
 import net.melisma.relay.db.MessageEntity
@@ -19,6 +20,7 @@ class MessageRepository(private val dao: MessageDao) {
     fun observeMessagesWithParts(): Flow<List<MessageWithParts>> = dao.observeMessagesWithParts()
 
     suspend fun ingestFromProviders(cr: ContentResolver) = withContext(Dispatchers.IO) {
+        AppLogger.i("MessageRepository.ingestFromProviders start")
         val lastSms = dao.getMaxTimestampForKind(MessageKind.SMS.name) ?: 0L
         val lastMms = dao.getMaxTimestampForKind(MessageKind.MMS.name) ?: 0L
         val lastRcs = dao.getMaxTimestampForKind(MessageKind.RCS.name) ?: 0L
@@ -26,6 +28,7 @@ class MessageRepository(private val dao: MessageDao) {
         val sms = MessageScanner.scanSms(cr).filter { it.timestamp > lastSms }
         val mms = MessageScanner.scanMms(cr).filter { it.timestamp > lastMms }
         val rcs = MessageScanner.scanRcsHeuristics(cr).filter { it.timestamp > lastRcs }
+        AppLogger.d("Ingest new counts: sms=${sms.size} mms=${mms.size} rcs=${rcs.size}")
         // Merge and sort by timestamp desc for unified ordering
         val all = (sms + mms + rcs).sortedByDescending { it.timestamp }
         val messageEntities = mutableListOf<MessageEntity>()
@@ -96,6 +99,7 @@ class MessageRepository(private val dao: MessageDao) {
             }
         }
         dao.insertBatch(messageEntities, partEntitiesAll, addrEntitiesAll)
+        AppLogger.i("MessageRepository.ingestFromProviders done inserted messages=${messageEntities.size} parts=${partEntitiesAll.size} addrs=${addrEntitiesAll.size}")
     }
 
     private fun materializeBody(item: net.melisma.relay.SmsItem, cr: ContentResolver): String? {

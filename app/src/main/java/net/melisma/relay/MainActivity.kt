@@ -37,6 +37,11 @@ import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.coroutineScope
 // remove duplicate AppDatabase import
 import net.melisma.relay.data.MessageRepository
 import kotlinx.coroutines.flow.collectLatest
@@ -88,9 +93,9 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
         val receive = ContextCompat.checkSelfPermission(
             context, Manifest.permission.RECEIVE_SMS
         ) == PackageManager.PERMISSION_GRANTED
-        val receiveMms = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.RECEIVE_MMS
-        ) == PackageManager.PERMISSION_GRANTED
+            val receiveMms = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.RECEIVE_MMS
+            ) == PackageManager.PERMISSION_GRANTED
         val receiveWap = ContextCompat.checkSelfPermission(
             context, Manifest.permission.RECEIVE_WAP_PUSH
         ) == PackageManager.PERMISSION_GRANTED
@@ -129,6 +134,26 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
             // Auto-ingest on first render
             LaunchedEffect("auto_ingest") {
                 viewModel.ingestFromProviders()
+            }
+            // Periodic ingest every 10 seconds while in foreground
+            val lifecycleOwner = LocalLifecycleOwner.current
+            LaunchedEffect("periodic_ingest", permissionsGranted) {
+                if (permissionsGranted) {
+                    AppLogger.i("Starting periodic ingest while in foreground")
+                    lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        coroutineScope {
+                            while (true) {
+                                try {
+                                    AppLogger.d("Periodic ingest tick")
+                                    viewModel.ingestFromProviders()
+                                } catch (t: Throwable) {
+                                    AppLogger.e("Periodic ingest failed", t)
+                                }
+                                delay(10_000L)
+                            }
+                        }
+                    }
+                }
             }
             Button(onClick = {
                 AppLogger.i("Manual scan: SMS/MMS/RCS")
