@@ -13,7 +13,7 @@ class PermissionUiTest {
     @Test
     fun permissionButtonAndStatusVisible() {
         composeRule.onNodeWithText("Permission status:", substring = true).assertIsDisplayed()
-        composeRule.onNodeWithText("Request SMS Permissions").assertIsDisplayed()
+        composeRule.onNodeWithText("Request SMS/MMS Permissions").assertIsDisplayed()
     }
 }
 

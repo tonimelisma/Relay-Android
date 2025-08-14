@@ -4,29 +4,30 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import net.melisma.relay.data.MessageRepository
+import net.melisma.relay.db.AppDatabase
 
 class SmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         AppLogger.d("SmsReceiver.onReceive action='${intent.action}'")
         if (Telephony.Sms.Intents.SMS_RECEIVED_ACTION == intent.action) {
-            AppLogger.i("SmsReceiver handling SMS_RECEIVED")
-            val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
-            AppLogger.d("SmsReceiver parsed ${messages.size} messages from intent")
-            val now = System.currentTimeMillis()
-            for (msg in messages) {
-                val sender = msg.displayOriginatingAddress ?: ""
-                val body = msg.messageBody ?: ""
-                AppLogger.d("SmsReceiver message part from '${sender}' length=${body.length}")
-                SmsInMemoryStore.addMessage(
-                    SmsItem(
-                        sender = sender,
-                        body = body,
-                        timestamp = now,
-                        kind = MessageKind.SMS
-                    )
-                )
+            AppLogger.i("SmsReceiver handling SMS_RECEIVED → trigger DB ingest")
+            val pending = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val db = AppDatabase.getInstance(context)
+                    val repo = MessageRepository(db.messageDao())
+                    repo.ingestFromProviders(context.contentResolver)
+                    AppLogger.i("SmsReceiver DB ingest complete")
+                } catch (t: Throwable) {
+                    AppLogger.e("SmsReceiver DB ingest failed", t)
+                } finally {
+                    pending.finish()
+                }
             }
-            AppLogger.i("SmsReceiver finished enqueuing messages into store")
         }
     }
 }

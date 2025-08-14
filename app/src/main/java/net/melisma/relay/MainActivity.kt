@@ -122,20 +122,18 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
         }
 
         val scope = rememberCoroutineScope()
-        val repo = remember(context) {
-            val db = AppDatabase.getInstance(context)
-            MessageRepository(db.messageDao())
-        }
+        // Centralize in ViewModel
+        val viewModel = remember(context) { MainViewModel(context.applicationContext as android.app.Application) }
 
         if (permissionsGranted) {
             // Auto-ingest on first render
             LaunchedEffect("auto_ingest") {
-                repo.ingestFromProviders(context.contentResolver)
+                viewModel.ingestFromProviders()
             }
             Button(onClick = {
                 AppLogger.i("Manual scan: SMS/MMS/RCS")
                 scope.launch {
-                    repo.ingestFromProviders(context.contentResolver)
+                    viewModel.ingestFromProviders()
                     AppLogger.i("Manual scan ingested into DB")
                 }
             }) {
@@ -146,9 +144,7 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
         
 
         if (permissionsGranted) {
-            val dao = remember(context) { AppDatabase.getInstance(context).messageDao() }
-            val itemsFlow = remember(dao) { dao.observeMessagesWithParts().distinctUntilChanged() }
-            val itemsWithParts by itemsFlow.collectAsState(initial = emptyList())
+            val itemsWithParts by viewModel.messages.collectAsState()
             LaunchedEffect(itemsWithParts.size) {
                 AppLogger.d("Rendering messages list size=${itemsWithParts.size}")
             }

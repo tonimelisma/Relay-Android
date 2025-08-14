@@ -50,7 +50,7 @@ App requests permissions and displays the result. Implemented in `MainActivity` 
 - Add a manual "Scan SMS/MMS/RCS" button to query `content://sms` (inbox), `content://mms` (+ `content://mms/part`, `content://mms/<id>/addr`), and heuristically surface RCS (incl. best-effort `content://im/chat` where accessible)
 
 **Deliverable:**  
-SMS and MMS notifications appear in UI as they arrive (even in background). Implemented via manifest `SmsReceiver`/`MmsReceiver`. Manual scan shows recent SMS, MMS (text parts + sender), and any heuristic RCS entries. UI observes changes reactively.
+SMS and MMS notifications are persisted directly into Room via receivers triggering repository ingest on a background thread. Manual scan shows recent SMS, MMS (text parts + sender), and any heuristic RCS entries. UI observes changes reactively via ViewModel.
 
 ---
 
@@ -104,7 +104,7 @@ App shows historical and live messages together.
     - `type` INTEGER NULL (137=from, 151=to, 130=cc)
     - `charset` TEXT NULL
     - Ingest: all rows from `content://mms/<id>/addr` are persisted per message
-- Load stored messages via Room Flow on startup; UI observes `@Transaction` relation (messages + parts) for a unified list
+- Load stored messages via Room Flow on startup; `MainViewModel` exposes `messages` (backed by the `@Transaction` relation messages + parts) for a unified list
 - Prevent duplicates via primary-key hash
 - MMS date (seconds) normalized to ms for unified ordering
 - Map available provider fields to `messages`: `threadId`, `read`, `dateSent`, `subject`
@@ -116,7 +116,8 @@ App shows historical and live messages together.
 
 **Requirements:**
 - Implement ingest that, for each kind (SMS/MMS/RCS), queries new items with `timestamp > MAX(timestamp) WHERE kind = ?` and inserts them
-- Run ingest automatically on app start (if permissions are granted) and via a button
+- Run ingest automatically on app start (if permissions are granted) and via a button; both centered in `MainViewModel`
+- Receivers trigger ingest on new events so UI updates promptly from Room
 - Gate UI: if required permissions (READ_SMS, RECEIVE_SMS, RECEIVE_MMS, RECEIVE_WAP_PUSH) are not granted, show only an explanation + permission request button. If granted, show the Scan button and unified message list
 
 **Deliverable:**  

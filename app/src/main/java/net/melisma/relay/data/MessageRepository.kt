@@ -1,6 +1,7 @@
 package net.melisma.relay.data
 
 import android.content.ContentResolver
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.melisma.relay.MessageKind
@@ -9,11 +10,13 @@ import net.melisma.relay.db.MessageDao
 import net.melisma.relay.db.MessageEntity
 import net.melisma.relay.db.MmsPartEntity
 import net.melisma.relay.db.MmsAddrEntity
+import net.melisma.relay.db.MessageWithParts
 import android.net.Uri
 import java.security.MessageDigest
 
 class MessageRepository(private val dao: MessageDao) {
     fun observeMessages() = dao.observeMessages()
+    fun observeMessagesWithParts(): Flow<List<MessageWithParts>> = dao.observeMessagesWithParts()
 
     suspend fun ingestFromProviders(cr: ContentResolver) = withContext(Dispatchers.IO) {
         val lastSms = dao.getMaxTimestampForKind(MessageKind.SMS.name) ?: 0L
@@ -28,6 +31,12 @@ class MessageRepository(private val dao: MessageDao) {
         val messageEntities = mutableListOf<MessageEntity>()
         val partEntitiesAll = mutableListOf<MmsPartEntity>()
         val addrEntitiesAll = mutableListOf<MmsAddrEntity>()
+        // For MMS, fetch detailed metadata once to avoid repeated queries per item
+        val detailedList = MessageScanner.scanMmsDetailed(cr, limit = 100)
+        val detailedById = detailedList.associateBy { it.mmsId }
+        // Some MMS may be looked up by timestamp as a fallback
+        val detailedByTs = detailedList.groupBy { it.timestampMs }
+
         for (item in all) {
             val id = hashFor(item.kind.name, item.sender, item.body, item.timestamp)
             val entity = MessageEntity(
@@ -46,10 +55,8 @@ class MessageRepository(private val dao: MessageDao) {
             )
             messageEntities.add(entity)
             if (item.kind == MessageKind.MMS) {
-                val detailed = MessageScanner
-                    .scanMmsDetailed(cr, limit = 100)
-                    .firstOrNull { it.mmsId == (item.providerId ?: -1L) } ?: 
-                    MessageScanner.scanMmsDetailed(cr, limit = 100).firstOrNull { it.timestampMs == item.timestamp }
+                val detailed = detailedById[item.providerId ?: -1L]
+                    ?: detailedByTs[item.timestamp]?.firstOrNull()
                 val partEntities = detailed?.partMeta?.mapNotNull { meta ->
                     val isImage = meta.ct?.startsWith("image/") == true
                     val blob = if (isImage) readPartBytes(cr, meta.partId) else null

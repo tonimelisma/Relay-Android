@@ -49,3 +49,12 @@
 - Update `PRD.md` and `ARCH.md` to reflect Phase 1 deliverable
 
 
+## 0.5.0 - Receivers → Room, ViewModel centralization, MMS ingest optimization
+
+- Removed in-memory store; receivers no longer write to a transient flow
+- `SmsReceiver`/`MmsReceiver` now trigger repository ingest and persist directly to Room (off main thread with `goAsync()` + IO coroutine)
+- UI centralized on `MainViewModel` in `MainActivity`; auto/manual ingest delegated to ViewModel; UI observes `messages` StateFlow
+- Repository now exposes `observeMessagesWithParts()`; MMS detailed scan performed once per ingest pass and reused
+- Tests updated: removed in-memory store unit test; aligned UI instrumentation tests; added DB/repository instrumented test
+- Docs updated to reflect architecture changes
+
