@@ -5,10 +5,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.melisma.relay.MessageKind
 import net.melisma.relay.MessageScanner
-import net.melisma.relay.db.AppDatabase
 import net.melisma.relay.db.MessageDao
 import net.melisma.relay.db.MessageEntity
 import net.melisma.relay.db.MmsPartEntity
+import net.melisma.relay.db.MmsAddrEntity
 import android.net.Uri
 import java.security.MessageDigest
 
@@ -27,17 +27,18 @@ class MessageRepository(private val dao: MessageDao) {
         val all = (sms + mms + rcs).sortedByDescending { it.timestamp }
         val messageEntities = mutableListOf<MessageEntity>()
         val partEntitiesAll = mutableListOf<MmsPartEntity>()
+        val addrEntitiesAll = mutableListOf<MmsAddrEntity>()
         for (item in all) {
             val id = hashFor(item.kind.name, item.sender, item.body, item.timestamp)
             val entity = MessageEntity(
                 id = id,
                 kind = item.kind.name,
-                threadId = null,
+                threadId = item.threadId,
                 address = item.sender,
                 body = materializeBody(item, cr),
                 timestamp = item.timestamp,
-                dateSent = null,
-                read = null,
+                dateSent = item.dateSent,
+                read = item.read,
                 synced = 0,
                 smsJson = if (item.kind == MessageKind.SMS) "{}" else null,
                 mmsJson = if (item.kind != MessageKind.SMS) "{}" else null,
@@ -45,30 +46,49 @@ class MessageRepository(private val dao: MessageDao) {
             )
             messageEntities.add(entity)
             if (item.kind == MessageKind.MMS) {
-                val detailed = MessageScanner.scanMmsDetailed(cr, limit = 50).firstOrNull { it.timestampMs == item.timestamp }
+                val detailed = MessageScanner
+                    .scanMmsDetailed(cr, limit = 100)
+                    .firstOrNull { it.mmsId == (item.providerId ?: -1L) } ?: 
+                    MessageScanner.scanMmsDetailed(cr, limit = 100).firstOrNull { it.timestampMs == item.timestamp }
                 val partEntities = detailed?.partMeta?.mapNotNull { meta ->
                     val isImage = meta.ct?.startsWith("image/") == true
                     val blob = if (isImage) readPartBytes(cr, meta.partId) else null
+                    val textValue = if (!isImage && meta.ct?.startsWith("text/") == true) meta.text else null
                     MmsPartEntity(
                         partId = meta.partId.toString(),
                         messageId = id,
                         seq = meta.seq,
                         ct = meta.ct,
-                        text = null,
+                        text = textValue,
                         data = blob,
-                        name = null,
-                        chset = null,
-                        cid = null,
-                        cl = null,
-                        cttS = null,
-                        cttT = null,
+                        name = meta.name,
+                        chset = meta.chset,
+                        cid = meta.cid,
+                        cl = meta.cl,
+                        cttS = meta.cttS,
+                        cttT = meta.cttT,
                         isImage = isImage
                     )
                 } ?: emptyList()
                 partEntitiesAll.addAll(partEntities)
+
+                val mmsIdForAddr = detailed?.mmsId ?: item.providerId
+                if (mmsIdForAddr != null && mmsIdForAddr > 0) {
+                    val addrs = MessageScanner.scanMmsAddrs(cr, mmsIdForAddr)
+                    addrs.forEach { ar ->
+                        addrEntitiesAll.add(
+                            MmsAddrEntity(
+                                messageId = id,
+                                address = ar.address,
+                                type = ar.type,
+                                charset = ar.charset
+                            )
+                        )
+                    }
+                }
             }
         }
-        dao.insertBatch(messageEntities, partEntitiesAll)
+        dao.insertBatch(messageEntities, partEntitiesAll, addrEntitiesAll)
     }
 
     private fun materializeBody(item: net.melisma.relay.SmsItem, cr: ContentResolver): String? {

@@ -49,9 +49,11 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
     - `isImage` INTEGER NULL (0/1)
   - `mms_addr` (Room entity `MmsAddrEntity`, planned ingestion)
     - `rowId` INTEGER PK, `messageId` TEXT (FK), `address` TEXT NULL, `type` INTEGER NULL, `charset` TEXT NULL
+    - All rows from `content://mms/<id>/addr` are persisted for each MMS
 - UI observes a transactional relation (`@Transaction` `observeMessagesWithParts()`) and renders small image previews from stored bytes
 - Deduplication via `messages.id` primary key (content-based hash)
 - MMS timestamps (seconds) normalized to ms for unified ordering in the repository
+- Provider fields mapped into `messages` when available: `threadId`, `read`, `dateSent`, MMS `subject`
 
 ### Incremental Ingest & Permissions Gate
 

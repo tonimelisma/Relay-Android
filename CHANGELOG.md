@@ -19,6 +19,13 @@
 - Unified, timestamp-sorted list across SMS/MMS/RCS
 - Migrated to KSP for annotation processing
 
+## 0.4.1 - MMS address ingestion + metadata mapping
+
+- Persist all MMS address rows (`content://mms/<id>/addr`) into `mms_addr`
+- Map additional MMS/SMS fields into `messages`: `threadId`, `read`, `dateSent`, `subject`
+- Improve MMS part ingestion to include text parts metadata (and keep image bytes)
+- Build and JVM unit tests passing
+
 
 - Add `RECEIVE_MMS` and `RECEIVE_WAP_PUSH` permissions
 - Add `MmsReceiver` to surface MMS notifications via WAP push

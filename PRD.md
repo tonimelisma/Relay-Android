@@ -103,9 +103,11 @@ App shows historical and live messages together.
     - `address` TEXT NULL
     - `type` INTEGER NULL (137=from, 151=to, 130=cc)
     - `charset` TEXT NULL
+    - Ingest: all rows from `content://mms/<id>/addr` are persisted per message
 - Load stored messages via Room Flow on startup; UI observes `@Transaction` relation (messages + parts) for a unified list
 - Prevent duplicates via primary-key hash
 - MMS date (seconds) normalized to ms for unified ordering
+- Map available provider fields to `messages`: `threadId`, `read`, `dateSent`, `subject`
 - Optional: "Clear History" button
 
 ### 🔶 Phase 4.1 – Incremental Local Sync & Permissions Gate (MVP)

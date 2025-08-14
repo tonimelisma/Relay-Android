@@ -104,19 +104,21 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
             .padding(all = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "Permission status: ${if (permissionsGranted) "Granted" else "Denied"}")
-        Button(onClick = {
-            AppLogger.i("Requesting SMS permissions")
-            requestPermissionsLauncher.launch(
-                arrayOf(
-                    Manifest.permission.READ_SMS,
-                    Manifest.permission.RECEIVE_SMS,
-                    Manifest.permission.RECEIVE_MMS,
-                    Manifest.permission.RECEIVE_WAP_PUSH
+        if (!permissionsGranted) {
+            Text(text = "Permission status: Denied")
+            Button(onClick = {
+                AppLogger.i("Requesting SMS permissions")
+                requestPermissionsLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.READ_SMS,
+                        Manifest.permission.RECEIVE_SMS,
+                        Manifest.permission.RECEIVE_MMS,
+                        Manifest.permission.RECEIVE_WAP_PUSH
+                    )
                 )
-            )
-        }) {
-            Text("Request SMS/MMS Permissions")
+            }) {
+                Text("Request SMS/MMS Permissions")
+            }
         }
 
         val scope = rememberCoroutineScope()
