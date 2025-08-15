@@ -42,6 +42,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
+import android.database.ContentObserver
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 // remove duplicate AppDatabase import
 import net.melisma.relay.data.MessageRepository
 import kotlinx.coroutines.flow.collectLatest
@@ -131,7 +135,7 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
         val viewModel = remember(context) { MainViewModel(context.applicationContext as android.app.Application) }
 
         if (permissionsGranted) {
-            // Auto-ingest on first render
+            // Auto-ingest on first render (initial full sync handled in repository when last==0)
             LaunchedEffect("auto_ingest") {
                 viewModel.ingestFromProviders()
             }
@@ -142,6 +146,28 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
                     AppLogger.i("Starting periodic ingest while in foreground")
                     lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                         coroutineScope {
+                            // Register content observers for sms/mms
+                            val cr = context.contentResolver
+                            val handler = Handler(Looper.getMainLooper())
+                            val smsObserver = object : ContentObserver(handler) {
+                                override fun onChange(selfChange: Boolean, uri: Uri?) {
+                                    AppLogger.d("ContentObserver SMS changed uri=$uri")
+                                    scope.launch { viewModel.ingestFromProviders() }
+                                }
+                            }
+                            val mmsObserver = object : ContentObserver(handler) {
+                                override fun onChange(selfChange: Boolean, uri: Uri?) {
+                                    AppLogger.d("ContentObserver MMS changed uri=$uri")
+                                    scope.launch { viewModel.ingestFromProviders() }
+                                }
+                            }
+                            try {
+                                cr.registerContentObserver(android.provider.Telephony.Sms.CONTENT_URI, true, smsObserver)
+                                cr.registerContentObserver(android.provider.Telephony.Mms.CONTENT_URI, true, mmsObserver)
+                                AppLogger.i("Registered content observers for SMS/MMS")
+                            } catch (t: Throwable) {
+                                AppLogger.e("Registering content observers failed", t)
+                            }
                             while (true) {
                                 try {
                                     AppLogger.d("Periodic ingest tick")

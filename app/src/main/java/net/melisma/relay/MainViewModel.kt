@@ -23,10 +23,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         messageRepository = MessageRepository(messageDao)
         messages = messageRepository.observeMessagesWithParts()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        AppLogger.i("MainViewModel initialized; messages flow subscribed")
     }
 
     fun ingestFromProviders() {
         viewModelScope.launch {
+            AppLogger.i("MainViewModel.ingestFromProviders trigger")
             messageRepository.ingestFromProviders(getApplication<Application>().contentResolver)
         }
     }

@@ -12,12 +12,22 @@ import androidx.room.PrimaryKey
 data class MessageEntity(
     @PrimaryKey val id: String,
     val kind: String, // SMS|MMS|RCS
+    val providerId: Long?,
+    val msgBox: Int?,
     val threadId: Long?,
     val address: String?,
     val body: String?,
     val timestamp: Long,
     val dateSent: Long?,
     val read: Int?,
+    val status: Int? = null,
+    val serviceCenter: String? = null,
+    val protocol: Int? = null,
+    val seen: Int? = null,
+    val locked: Int? = null,
+    val errorCode: Int? = null,
+    val subject: String? = null,
+    val mmsContentType: String? = null,
     val synced: Int? = 0,
     val smsJson: String?,
     val mmsJson: String?,
@@ -43,12 +53,15 @@ data class MmsPartEntity(
     val ct: String?,
     val text: String?,
     val data: ByteArray?,
+    val dataPath: String?,
     val name: String?,
     val chset: String?,
     val cid: String?,
     val cl: String?,
     val cttS: String?,
     val cttT: String?,
+    val cd: String?,
+    val fn: String?,
     val isImage: Boolean?
 )
 

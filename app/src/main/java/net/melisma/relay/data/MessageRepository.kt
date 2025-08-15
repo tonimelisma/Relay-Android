@@ -25,8 +25,12 @@ class MessageRepository(private val dao: MessageDao) {
         val lastMms = dao.getMaxTimestampForKind(MessageKind.MMS.name) ?: 0L
         val lastRcs = dao.getMaxTimestampForKind(MessageKind.RCS.name) ?: 0L
 
-        val sms = MessageScanner.scanSms(cr).filter { it.timestamp > lastSms }
-        val mms = MessageScanner.scanMms(cr).filter { it.timestamp > lastMms }
+        // Initial full sync: when DB is empty per kind (max == 0), do not filter by timestamp
+        val smsAll = MessageScanner.scanSms(cr)
+        val mmsAll = MessageScanner.scanMms(cr)
+        val rcsAll = MessageScanner.scanRcsHeuristics(cr)
+        val sms = if (lastSms == 0L) smsAll else smsAll.filter { it.timestamp > lastSms }
+        val mms = if (lastMms == 0L) mmsAll else mmsAll.filter { it.timestamp > lastMms }
         val rcs = MessageScanner.scanRcsHeuristics(cr).filter { it.timestamp > lastRcs }
         AppLogger.d("Ingest new counts: sms=${sms.size} mms=${mms.size} rcs=${rcs.size}")
         // Merge and sort by timestamp desc for unified ordering
@@ -45,15 +49,25 @@ class MessageRepository(private val dao: MessageDao) {
             val entity = MessageEntity(
                 id = id,
                 kind = item.kind.name,
+                providerId = item.providerId,
+                msgBox = item.msgBox,
                 threadId = item.threadId,
                 address = item.sender,
                 body = materializeBody(item, cr),
                 timestamp = item.timestamp,
                 dateSent = item.dateSent,
                 read = item.read,
+                status = item.status,
+                serviceCenter = item.serviceCenter,
+                protocol = item.protocol,
+                seen = item.seen,
+                locked = item.locked,
+                errorCode = item.errorCode,
+                subject = item.subject,
+                mmsContentType = item.mmsContentType,
                 synced = 0,
-                smsJson = if (item.kind == MessageKind.SMS) "{}" else null,
-                mmsJson = if (item.kind != MessageKind.SMS) "{}" else null,
+                smsJson = if (item.kind == MessageKind.SMS) toRawJson(item) else null,
+                mmsJson = if (item.kind != MessageKind.SMS) toRawJson(item) else null,
                 convJson = null
             )
             messageEntities.add(entity)
@@ -71,12 +85,15 @@ class MessageRepository(private val dao: MessageDao) {
                         ct = meta.ct,
                         text = textValue,
                         data = blob,
+                        dataPath = meta.dataPath,
                         name = meta.name,
                         chset = meta.chset,
                         cid = meta.cid,
                         cl = meta.cl,
                         cttS = meta.cttS,
                         cttT = meta.cttT,
+                        cd = meta.cd,
+                        fn = meta.fn,
                         isImage = isImage
                     )
                 } ?: emptyList()
@@ -124,6 +141,26 @@ class MessageRepository(private val dao: MessageDao) {
         }
     }
 
+    private fun toRawJson(item: net.melisma.relay.SmsItem): String {
+        // Minimal JSON snapshot of the scanned item
+        val parts = listOf(
+            "kind" to item.kind.name,
+            "providerId" to (item.providerId?.toString() ?: "null"),
+            "threadId" to (item.threadId?.toString() ?: "null"),
+            "sender" to (item.sender ?: ""),
+            "body" to (item.body ?: ""),
+            "timestamp" to item.timestamp.toString(),
+            "dateSent" to (item.dateSent?.toString() ?: "null"),
+            "read" to (item.read?.toString() ?: "null"),
+            "subject" to (item.subject ?: ""),
+            "ct_t" to (item.mmsContentType ?: ""),
+            "msgBox" to (item.msgBox?.toString() ?: "null"),
+            "status" to (item.status?.toString() ?: "null")
+        )
+        return parts.joinToString(prefix = "{", postfix = "}", separator = ",") { (k, v) ->
+            "\"$k\":\"" + v.replace("\"", "\\\"") + "\""
+        }
+    }
     private fun hashFor(kind: String, sender: String?, body: String?, ts: Long): String {
         val md = MessageDigest.getInstance("SHA-256")
         val input = listOf(kind, sender ?: "", body ?: "", ts.toString()).joinToString("|")
