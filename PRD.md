@@ -74,19 +74,24 @@ App shows historical and live messages together.
 **Objective:** Store messages on device for reload after app restart.
 
 **Requirements:**
-- Store SMS/MMS/RCS messages in Room using a unified schema with satellite tables:
+- Store SMS/MMS/RCS messages in Room using a unified schema with satellite tables (full provider mirroring):
   - `messages`
     - `id` TEXT PRIMARY KEY (SHA-256 of kind + sender + body + timestamp)
     - `kind` TEXT (SMS|MMS|RCS)
+    - `providerId` INTEGER NULL (provider `_id`)
+    - `msgBox` INTEGER NULL (SMS `type` / MMS `m_type`)
     - `threadId` INTEGER NULL
     - `address` TEXT NULL
     - `body` TEXT NULL
     - `timestamp` INTEGER (ms since epoch)
     - `dateSent` INTEGER NULL (ms since epoch)
     - `read` INTEGER NULL (0/1)
+    - `status` INTEGER NULL, `serviceCenter` TEXT NULL, `protocol` INTEGER NULL
+    - `seen` INTEGER NULL, `locked` INTEGER NULL, `errorCode` INTEGER NULL
+    - `subject` TEXT NULL, `mmsContentType` TEXT NULL
     - `synced` INTEGER NULL (0/1; default 0)
-    - `smsJson` TEXT NULL (raw SMS row JSON if desired)
-    - `mmsJson` TEXT NULL (raw MMS row JSON if desired)
+    - `smsJson` TEXT NULL (raw provider snapshot JSON)
+    - `mmsJson` TEXT NULL (raw provider snapshot JSON)
     - `convJson` TEXT NULL (raw conversations row JSON if desired)
   - `mms_parts`
     - `partId` TEXT PRIMARY KEY (MMS part id)
@@ -95,6 +100,7 @@ App shows historical and live messages together.
     - `ct` TEXT NULL (MIME type, e.g. text/plain, image/jpeg)
     - `text` TEXT NULL (for text parts)
     - `data` BLOB NULL (full bytes for image parts; used directly for small previews)
+    - `dataPath` TEXT NULL, `cd` TEXT NULL, `fn` TEXT NULL
     - `name` TEXT NULL, `chset` TEXT NULL, `cid` TEXT NULL, `cl` TEXT NULL, `cttS` TEXT NULL, `cttT` TEXT NULL
     - `isImage` INTEGER NULL (0/1 convenience flag)
   - `mms_addr`
@@ -110,14 +116,16 @@ App shows historical and live messages together.
 - Map available provider fields to `messages`: `threadId`, `read`, `dateSent`, `subject`
 - Optional: "Clear History" button
 
-### 🔶 Phase 4.1 – Incremental Local Sync & Permissions Gate (MVP)
+### 🔶 Phase 4.1 – Initial Full Sync, Incremental Updates & Permissions Gate (MVP)
 
 **Objective:** Smart incremental ingest from providers gated by permissions.
 
 **Requirements:**
-- Implement ingest that, for each kind (SMS/MMS/RCS), queries new items with `timestamp > MAX(timestamp) WHERE kind = ?` and inserts them
+- Implement ingest that performs an initial full scan per kind (when no prior items exist), then incrementally queries new items with `timestamp > MAX(timestamp) WHERE kind = ?`
 - Run ingest automatically on app start (if permissions are granted) and via a button; both centered in `MainViewModel`
 - Receivers trigger ingest on new events so UI updates promptly from Room
+- Add content observers on `content://sms` and `content://mms` to react to provider changes
+- Add lifecycle-aware periodic polling (every ~10s while app is in foreground)
 - Gate UI: if required permissions (READ_SMS, RECEIVE_SMS, RECEIVE_MMS, RECEIVE_WAP_PUSH) are not granted, show only an explanation + permission request button. If granted, show the Scan button and unified message list
 
 **Deliverable:**  

@@ -12,6 +12,7 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 - MMS notifications are received via WAP push (`MmsReceiver`, `application/vnd.wap.mms-message`). Manual provider scan reads MMS text parts (`content://mms/part`) and sender (`content://mms/<id>/addr`). RCS is heuristic via MMS DB content types and optional `content://im/chat` where available.
 - Receivers trigger repository ingest on a background thread and persist directly into Room (no in-memory intermediary).
 - Messages are stored in a local Room database with MMS parts/addresses.
+ - Messages are stored in a local Room database mirroring provider fields (SMS/MMS), including MMS parts and addresses.
 - A background WorkManager job will upload unsynced messages (Phase 5+)
 - The UI will observe the local DB and reflect sync status (Phase 4+)
 - Messages will be deduplicated using a content-based hash (Phase 4+)
@@ -39,13 +40,18 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
   - `messages` (Room entity `MessageEntity`)
     - `id` TEXT PRIMARY KEY (SHA-256 of kind + sender + body + timestamp)
     - `kind` TEXT (SMS|MMS|RCS)
+    - `providerId` INTEGER NULL, `msgBox` INTEGER NULL
     - `threadId` INTEGER NULL, `address` TEXT NULL, `body` TEXT NULL
     - `timestamp` INTEGER (ms), `dateSent` INTEGER NULL (ms), `read` INTEGER NULL, `synced` INTEGER NULL (0/1; default 0)
+    - `status` INTEGER NULL, `serviceCenter` TEXT NULL, `protocol` INTEGER NULL
+    - `seen` INTEGER NULL, `locked` INTEGER NULL, `errorCode` INTEGER NULL
+    - `subject` TEXT NULL, `mmsContentType` TEXT NULL
     - `smsJson` TEXT NULL, `mmsJson` TEXT NULL, `convJson` TEXT NULL
   - `mms_parts` (Room entity `MmsPartEntity`)
     - `partId` TEXT PRIMARY KEY, `messageId` TEXT (FK)
     - `seq` INTEGER NULL, `ct` TEXT NULL, `text` TEXT NULL
     - `data` BLOB NULL (full image bytes for image parts; used directly for small previews)
+    - `dataPath` TEXT NULL, `cd` TEXT NULL, `fn` TEXT NULL
     - `name` TEXT NULL, `chset` TEXT NULL, `cid` TEXT NULL, `cl` TEXT NULL, `cttS` TEXT NULL, `cttT` TEXT NULL
     - `isImage` INTEGER NULL (0/1)
   - `mms_addr` (Room entity `MmsAddrEntity`, planned ingestion)
@@ -59,8 +65,8 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 
 ### Incremental Ingest & Permissions Gate
 
-- Incremental ingest reads providers only for items with `timestamp > MAX(timestamp)` per kind (SMS/MMS/RCS) and inserts new rows. Inserts are batched transactionally to minimize UI emissions.
-- Ingest runs automatically at app start (when permissions are granted) and on-demand via a button; `MainViewModel` centralizes both.
+- On first run per kind, perform a full scan. Then incremental ingest reads providers only for items with `timestamp > MAX(timestamp)` per kind (SMS/MMS/RCS) and inserts new rows. Inserts are batched transactionally to minimize UI emissions.
+- Ingest runs automatically at app start (when permissions are granted) and on-demand via a button; `MainViewModel` centralizes both. Content observers on `content://sms` and `content://mms` trigger ingest on changes, and lifecycle-aware polling (~10s) runs while the app is foregrounded.
 - Permissions gate: if required permissions (READ_SMS, RECEIVE_SMS, RECEIVE_MMS, RECEIVE_WAP_PUSH) are missing, the UI renders only the explanation + request flow; list is hidden until all are granted.
 
 **Why:** Room provides type-safe queries, lifecycle awareness, and easy testing support.

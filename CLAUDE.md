@@ -53,17 +53,17 @@ The app follows a layered architecture designed for background SMS processing:
 
 ### Core Components
 1. **SMS Receiving Layer**: Manifest-declared BroadcastReceiver (`SmsReceiver`) listens for `android.provider.Telephony.SMS_RECEIVED`
-2. **Local Persistence**: Room database stores SMS messages with SHA-256 hash-based deduplication  
+2. **Local Persistence**: Room database stores SMS/MMS/RCS with SHA-256 hash-based deduplication and mirrors key provider fields (SMS/MMS), including MMS parts and addresses  
 3. **Cloud Sync Layer**: WorkManager handles background uploads with network constraints and retry logic
 4. **UI Layer**: MVVM with Jetpack Compose, shows permissions state and message list
 5. **Permissions Management**: Runtime permission handling for `RECEIVE_SMS` and `READ_SMS`
 
 ### Data Flow
-1. SMS received via BroadcastReceiver
-2. Message parsed and stored in Room DB (deduplicated by content hash)
-3. WorkManager triggered for background upload
-4. UI observes DB changes via LiveData/StateFlow
-5. Cloud sync marks messages as synced on success
+1. SMS/MMS events received via BroadcastReceivers
+2. Content observers on `content://sms` and `content://mms` trigger ingest on provider changes
+3. Lifecycle-aware polling (~10s) while app is foregrounded
+4. Repository performs initial full scan per kind, then incremental ingest; persists to Room (deduplicated by content hash)
+5. UI observes DB changes via StateFlow; future: WorkManager handles upload
 
 ### Key Design Decisions
 - **Hash-based deduplication**: Uses `SHA-256(sender + timestamp + body)` as primary key

@@ -58,3 +58,13 @@
 - Tests updated: removed in-memory store unit test; aligned UI instrumentation tests; added DB/repository instrumented test
 - Docs updated to reflect architecture changes
 
+
+## 0.6.0 - Full provider mirroring + initial full sync + observers + polling
+
+- Expand Room schema to mirror provider fields for SMS/MMS (message box, provider id, status, service center, protocol, seen, locked, error code, subject, content type)
+- Persist extended MMS part metadata (`dataPath`, `cd`, `fn`) and keep bytes for image parts
+- Store raw provider snapshots in `smsJson`/`mmsJson`
+- Perform initial full scan per kind on first run; incremental ingest afterward
+- Register content observers on `content://sms` and `content://mms`; trigger ingest on changes
+- Lifecycle-aware periodic polling (every ~10s) while app is foregrounded
+- Added logging across ingest start/counts/inserted totals
