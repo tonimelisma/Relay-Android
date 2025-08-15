@@ -65,6 +65,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        // Schedule background sync worker
+        MessageSyncWorker.schedule(applicationContext)
     }
 }
 
@@ -139,14 +141,12 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
             LaunchedEffect("auto_ingest") {
                 viewModel.ingestFromProviders()
             }
-            // Periodic ingest every 10 seconds while in foreground
+            // Foreground ingest via content observers only (no polling)
             val lifecycleOwner = LocalLifecycleOwner.current
-            LaunchedEffect("periodic_ingest", permissionsGranted) {
+            LaunchedEffect("observers_only", permissionsGranted) {
                 if (permissionsGranted) {
-                    AppLogger.i("Starting periodic ingest while in foreground")
                     lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                         coroutineScope {
-                            // Register content observers for sms/mms
                             val cr = context.contentResolver
                             val handler = Handler(Looper.getMainLooper())
                             val smsObserver = object : ContentObserver(handler) {
@@ -161,34 +161,28 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
                                     scope.launch { viewModel.ingestFromProviders() }
                                 }
                             }
+                            // Best-effort: observe Samsung RCS if accessible
+                            val rcsObserver = object : ContentObserver(handler) {
+                                override fun onChange(selfChange: Boolean, uri: Uri?) {
+                                    AppLogger.d("ContentObserver RCS changed uri=$uri")
+                                    scope.launch { viewModel.ingestFromProviders() }
+                                }
+                            }
                             try {
                                 cr.registerContentObserver(android.provider.Telephony.Sms.CONTENT_URI, true, smsObserver)
                                 cr.registerContentObserver(android.provider.Telephony.Mms.CONTENT_URI, true, mmsObserver)
-                                AppLogger.i("Registered content observers for SMS/MMS")
+                                try {
+                                    cr.registerContentObserver(Uri.parse("content://im/chat"), true, rcsObserver)
+                                } catch (t: Throwable) {
+                                    AppLogger.w("RCS content observer registration failed: ${t.message}")
+                                }
+                                AppLogger.i("Registered content observers for SMS/MMS/RCS where available")
                             } catch (t: Throwable) {
                                 AppLogger.e("Registering content observers failed", t)
-                            }
-                            while (true) {
-                                try {
-                                    AppLogger.d("Periodic ingest tick")
-                                    viewModel.ingestFromProviders()
-                                } catch (t: Throwable) {
-                                    AppLogger.e("Periodic ingest failed", t)
-                                }
-                                delay(10_000L)
                             }
                         }
                     }
                 }
-            }
-            Button(onClick = {
-                AppLogger.i("Manual scan: SMS/MMS/RCS")
-                scope.launch {
-                    viewModel.ingestFromProviders()
-                    AppLogger.i("Manual scan ingested into DB")
-                }
-            }) {
-                Text("Scan SMS/MMS/RCS")
             }
         }
 
@@ -224,3 +218,4 @@ private fun PermissionsScreenPreview() {
         PermissionsScreen()
     }
 }
+ 

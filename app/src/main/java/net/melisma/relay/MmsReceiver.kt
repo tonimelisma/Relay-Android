@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import net.melisma.relay.data.MessageRepository
 import net.melisma.relay.db.AppDatabase
+import net.melisma.relay.MessageKind
 
 class MmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -23,7 +24,7 @@ class MmsReceiver : BroadcastReceiver() {
                 try {
                     val db = AppDatabase.getInstance(context)
                     val repo = MessageRepository(db.messageDao())
-                    repo.ingestFromProviders(context.contentResolver)
+                    repo.ingestFromProviders(context.contentResolver, kind = MessageKind.MMS)
                     AppLogger.i("MmsReceiver DB ingest complete")
                 } catch (t: Throwable) {
                     AppLogger.e("MmsReceiver DB ingest failed", t)

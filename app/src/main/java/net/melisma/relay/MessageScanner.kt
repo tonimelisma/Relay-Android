@@ -89,7 +89,10 @@ object MessageScanner {
         val projection = arrayOf("_id", "date", "sub", "ct_t", "thread_id", "date_sent", "read", "m_type")
         val sort = "date DESC"
         AppLogger.d("MessageScanner.scanMms start")
-        val cursor = contentResolver.query(Telephony.Mms.CONTENT_URI, projection, null, null, sort)
+        // Inbound-only focus: include RETRIEVE_CONF (132) and NOTIFICATION_IND (130)
+        val selection = "m_type IN (?, ?)"
+        val selectionArgs = arrayOf("132", "130")
+        val cursor = contentResolver.query(Telephony.Mms.CONTENT_URI, projection, selection, selectionArgs, sort)
         cursor?.use { c ->
             var count = 0
             val idCol = c.getColumnIndex("_id")
@@ -335,14 +338,16 @@ object MessageScanner {
                 val ct = if (ctCol >= 0) c.getString(ctCol) else null
                 if (ct != null && (ct.contains("application/vnd.gsma.rcs", ignoreCase = true) || ct.contains("rcs", ignoreCase = true))) {
                     val id = if (idCol >= 0) c.getLong(idCol) else -1L
-                    val ts = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
+                    val tsRaw = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
+                    val ts = if (tsRaw < 10_000_000_000L) tsRaw * 1000 else tsRaw
                     val sub = if (subCol >= 0) c.getString(subCol) else null
                     results.add(
                         SmsItem(
                             sender = "<rcs:$id>",
                             body = sub ?: "RCS candidate ($ct)",
                             timestamp = ts,
-                            kind = MessageKind.RCS
+                            kind = MessageKind.RCS,
+                            providerId = id
                         )
                     )
                     count++
@@ -355,17 +360,23 @@ object MessageScanner {
             contentResolver.query(uri, null, null, null, "date DESC")?.use { c ->
                 val bodyCol = c.getColumnIndex("body")
                 val addrCol = c.getColumnIndex("address")
+                val dateCol = c.getColumnIndex("date")
+                val idCol = c.getColumnIndex("_id")
                 var count = 0
                 while (c.moveToNext() && count < limit) {
                     val body = if (bodyCol >= 0) c.getString(bodyCol) else null
                     val addr = if (addrCol >= 0) c.getString(addrCol) else null
+                    val tsRaw = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
+                    val ts = if (tsRaw < 10_000_000_000L) tsRaw * 1000 else tsRaw
+                    val pid = if (idCol >= 0) c.getLong(idCol) else null
                     if (!body.isNullOrBlank()) {
                         results.add(
                             SmsItem(
                                 sender = addr ?: "<rcs>",
                                 body = body,
-                                timestamp = System.currentTimeMillis(),
-                                kind = MessageKind.RCS
+                                timestamp = ts,
+                                kind = MessageKind.RCS,
+                                providerId = pid
                             )
                         )
                         count++

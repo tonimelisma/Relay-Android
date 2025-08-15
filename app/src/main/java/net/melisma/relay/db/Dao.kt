@@ -36,6 +36,9 @@ interface MessageDao {
     @Query("SELECT MAX(timestamp) FROM messages WHERE kind = :kind")
     suspend fun getMaxTimestampForKind(kind: String): Long?
 
+    @Query("SELECT MAX(providerId) FROM messages WHERE kind = :kind")
+    suspend fun getMaxProviderIdForKind(kind: String): Long?
+
     @Transaction
     suspend fun insertBatch(messages: List<MessageEntity>, parts: List<MmsPartEntity>, addrs: List<MmsAddrEntity> = emptyList()) {
         if (messages.isNotEmpty()) insertMessages(messages)

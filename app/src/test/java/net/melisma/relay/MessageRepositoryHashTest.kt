@@ -24,6 +24,7 @@ class MessageRepositoryHashTest {
         override fun observeMessagesWithParts(): Flow<List<MessageWithParts>> = emptyFlow()
         override suspend fun clearAll() {}
         override suspend fun getMaxTimestampForKind(kind: String): Long? = null
+        override suspend fun getMaxProviderIdForKind(kind: String): Long? = null
         override suspend fun insertBatch(messages: List<MessageEntity>, parts: List<MmsPartEntity>, addrs: List<MmsAddrEntity>) {}
     }
 
