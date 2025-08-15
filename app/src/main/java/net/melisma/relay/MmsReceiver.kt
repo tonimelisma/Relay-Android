@@ -9,7 +9,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import net.melisma.relay.data.MessageRepository
 import net.melisma.relay.db.AppDatabase
-import net.melisma.relay.MessageKind
 
 class MmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {

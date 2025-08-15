@@ -68,3 +68,15 @@
 - Register content observers on `content://sms` and `content://mms`; trigger ingest on changes
 - Lifecycle-aware periodic polling (every ~10s) while app is foregrounded
 - Added logging across ingest start/counts/inserted totals
+
+## 0.7.0 - Ingestion trigger overhaul, background sync, RCS fixes
+
+- Removed manual "Scan" button and removed 10s foreground polling
+- Kept broadcast receivers and content observers (SMS/MMS + best-effort RCS)
+- Added `MessageSyncWorker` with WorkManager periodic (~15 min) ingest; scheduled on app start and after boot via `BootReceiver`
+- Introduced ingestion concurrency guard to avoid overlapping runs
+- Switched incremental ingest to providerId per kind; still performs full scan per kind on first run
+- Fixed timestamp inconsistencies for MMS/RCS (normalize to ms; use provider timestamps for Samsung RCS)
+- Avoid duplicate MMS vs RCS by excluding MMS rows that match RCS provider ids
+- Optimized MMS detail ingest: fetch parts/addresses on-demand per inserted MMS (reduced UI latency)
+- Kept `synced=0` on insert; destructive migrations allowed pre-release

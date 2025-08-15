@@ -47,10 +47,10 @@ App requests permissions and displays the result. Implemented in `MainActivity` 
 - Parse sender + body from each received message
 - Append message to an in-app list (RecyclerView or simple list)
 - Register a `BroadcastReceiver` for MMS notifications (`WAP_PUSH_RECEIVED` with `application/vnd.wap.mms-message`) and surface a minimal entry
-- Add a manual "Scan SMS/MMS/RCS" button to query `content://sms` (inbox), `content://mms` (+ `content://mms/part`, `content://mms/<id>/addr`), and heuristically surface RCS (incl. best-effort `content://im/chat` where accessible)
+- Heuristic RCS surfaced via MMS DB content types and best-effort `content://im/chat` where accessible
 
 **Deliverable:**  
-SMS and MMS notifications are persisted directly into Room via receivers triggering repository ingest on a background thread. Manual scan shows recent SMS, MMS (text parts + sender), and any heuristic RCS entries. UI observes changes reactively via ViewModel.
+SMS and MMS notifications are persisted directly into Room via receivers triggering repository ingest on a background thread. UI observes changes reactively via ViewModel.
 
 ---
 
@@ -121,11 +121,13 @@ App shows historical and live messages together.
 **Objective:** Smart incremental ingest from providers gated by permissions.
 
 **Requirements:**
-- Implement ingest that performs an initial full scan per kind (when no prior items exist), then incrementally queries new items with `timestamp > MAX(timestamp) WHERE kind = ?`
-- Run ingest automatically on app start (if permissions are granted) and via a button; both centered in `MainViewModel`
+- Implement ingest that performs an initial full scan per kind (when no prior items exist), then incrementally queries new items by provider id per kind
+- Run ingest automatically on app start (if permissions are granted); centralized in `MainViewModel`
 - Receivers trigger ingest on new events so UI updates promptly from Room
-- Add content observers on `content://sms` and `content://mms` to react to provider changes
-- Add lifecycle-aware periodic polling (every ~10s while app is in foreground)
+- Add content observers on `content://sms` and `content://mms` (and best-effort RCS provider) to react to provider changes while app is foregrounded
+- Remove foreground periodic polling (10s loop) and remove manual scan button
+- Add background periodic sync using WorkManager approximately every 15 minutes to catch missed broadcasts and all RCS
+- Schedule the periodic sync on app start and after device boot via a `BootReceiver`
 - Gate UI: if required permissions (READ_SMS, RECEIVE_SMS, RECEIVE_MMS, RECEIVE_WAP_PUSH) are not granted, show only an explanation + permission request button. If granted, show the Scan button and unified message list
 
 **Deliverable:**  
@@ -186,10 +188,12 @@ Basic but clean UX with minimal configuration options.
 
 - Must work while app is backgrounded or inactive
 - Efficient battery and network usage (via WorkManager)
+- Concurrency guard around ingestion to avoid overlapping scans
 - Gracefully handle:
   - Permission denial
   - No network connection
 - No unnecessary access (e.g., contacts or SMS sending)
+- Destructive migrations permitted during pre-release (DB may be dropped on schema change)
 
 ---
 

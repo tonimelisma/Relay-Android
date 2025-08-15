@@ -62,8 +62,9 @@ class MessageRepository(private val dao: MessageDao) {
             val messageEntities = mutableListOf<MessageEntity>()
             val partEntitiesAll = mutableListOf<MmsPartEntity>()
             val addrEntitiesAll = mutableListOf<MmsAddrEntity>()
-            val detailedList = if (mms.isNotEmpty()) MessageScanner.scanMmsDetailed(cr, limit = 1000) else emptyList()
-            val detailedById = detailedList.associateBy { it.mmsId }
+            // Avoid heavy prefetch; resolve parts/addresses on-demand per MMS
+            val tIngestStart = System.currentTimeMillis()
+            AppLogger.d("Ingest assembly started allCount=${(sms + mms + rcs).size}")
 
             for (item in all) {
                 val id = hashFor(item.kind.name, item.sender, item.body, item.timestamp)
@@ -93,8 +94,10 @@ class MessageRepository(private val dao: MessageDao) {
                 )
                 messageEntities.add(entity)
                 if (item.kind == MessageKind.MMS) {
-                    val detailed = detailedById[item.providerId ?: -1L]
-                    val partEntities = detailed?.partMeta?.mapNotNull { meta ->
+                    val pid = item.providerId ?: -1L
+                    val tPartsStart = System.currentTimeMillis()
+                    val partsMeta = MessageScanner.scanMmsPartsMetaFor(cr, pid)
+                    val partEntities = partsMeta.mapNotNull { meta ->
                         val isImage = meta.ct?.startsWith("image/") == true
                         val blob = if (isImage) readPartBytes(cr, meta.partId) else null
                         val textValue = if (!isImage && meta.ct?.startsWith("text/") == true) meta.text else null
@@ -116,12 +119,13 @@ class MessageRepository(private val dao: MessageDao) {
                             fn = meta.fn,
                             isImage = isImage
                         )
-                    } ?: emptyList()
+                    }
                     partEntitiesAll.addAll(partEntities)
+                    AppLogger.d("Ingest parts for mmsId=$pid parts=${partEntities.size} took=${System.currentTimeMillis() - tPartsStart}ms")
 
-                    val mmsIdForAddr = detailed?.mmsId ?: item.providerId
-                    if (mmsIdForAddr != null && mmsIdForAddr > 0) {
-                        val addrs = MessageScanner.scanMmsAddrs(cr, mmsIdForAddr)
+                    if (pid > 0) {
+                        val tAddrStart = System.currentTimeMillis()
+                        val addrs = MessageScanner.scanMmsAddrs(cr, pid)
                         addrs.forEach { ar ->
                             addrEntitiesAll.add(
                                 MmsAddrEntity(
@@ -132,11 +136,14 @@ class MessageRepository(private val dao: MessageDao) {
                                 )
                             )
                         }
+                        AppLogger.d("Ingest addrs for mmsId=$pid count=${addrs.size} took=${System.currentTimeMillis() - tAddrStart}ms")
                     }
                 }
             }
+            val tDbStart = System.currentTimeMillis()
             dao.insertBatch(messageEntities, partEntitiesAll, addrEntitiesAll)
-            AppLogger.i("MessageRepository.ingestFromProviders done inserted messages=${messageEntities.size} parts=${partEntitiesAll.size} addrs=${addrEntitiesAll.size}")
+            val tTotal = System.currentTimeMillis() - tIngestStart
+            AppLogger.i("MessageRepository.ingestFromProviders done inserted messages=${messageEntities.size} parts=${partEntitiesAll.size} addrs=${addrEntitiesAll.size} dbMs=${System.currentTimeMillis() - tDbStart} totalMs=$tTotal")
         } finally {
             ingestInFlight.set(false)
         }

@@ -12,12 +12,12 @@ import java.util.concurrent.TimeUnit
 
 class MessageSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
-        AppLogger.i("MessageSyncWorker.doWork start")
+        AppLogger.i("MessageSyncWorker.doWork start @${System.currentTimeMillis()}")
         return try {
             val db = AppDatabase.getInstance(applicationContext)
             val repo = MessageRepository(db.messageDao())
             repo.ingestFromProviders(applicationContext.contentResolver)
-            AppLogger.i("MessageSyncWorker.doWork success")
+            AppLogger.i("MessageSyncWorker.doWork success @${System.currentTimeMillis()}")
             Result.success()
         } catch (t: Throwable) {
             AppLogger.e("MessageSyncWorker.doWork failed", t)
@@ -37,7 +37,7 @@ class MessageSyncWorker(appContext: Context, params: WorkerParameters) : Corouti
                     ExistingPeriodicWorkPolicy.UPDATE,
                     request
                 )
-            AppLogger.i("Scheduled MessageSyncWorker every ~15 minutes")
+            AppLogger.i("Scheduled MessageSyncWorker every ~15 minutes @${System.currentTimeMillis()}")
         }
     }
 }

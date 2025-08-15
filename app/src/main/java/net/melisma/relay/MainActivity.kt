@@ -18,8 +18,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
-import net.melisma.relay.db.AppDatabase
-import net.melisma.relay.db.MessageWithParts
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -40,17 +38,11 @@ import kotlinx.coroutines.launch
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import android.database.ContentObserver
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-// remove duplicate AppDatabase import
-import net.melisma.relay.data.MessageRepository
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import net.melisma.relay.ui.theme.RelayTheme
 
 class MainActivity : ComponentActivity() {
@@ -139,6 +131,8 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
         if (permissionsGranted) {
             // Auto-ingest on first render (initial full sync handled in repository when last==0)
             LaunchedEffect("auto_ingest") {
+                val t0 = System.currentTimeMillis()
+                AppLogger.d("Auto-ingest kickoff @${t0}")
                 viewModel.ingestFromProviders()
             }
             // Foreground ingest via content observers only (no polling)
@@ -151,20 +145,20 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
                             val handler = Handler(Looper.getMainLooper())
                             val smsObserver = object : ContentObserver(handler) {
                                 override fun onChange(selfChange: Boolean, uri: Uri?) {
-                                    AppLogger.d("ContentObserver SMS changed uri=$uri")
+                                    AppLogger.d("ContentObserver SMS changed uri=$uri ts=${System.currentTimeMillis()}")
                                     scope.launch { viewModel.ingestFromProviders() }
                                 }
                             }
                             val mmsObserver = object : ContentObserver(handler) {
                                 override fun onChange(selfChange: Boolean, uri: Uri?) {
-                                    AppLogger.d("ContentObserver MMS changed uri=$uri")
+                                    AppLogger.d("ContentObserver MMS changed uri=$uri ts=${System.currentTimeMillis()}")
                                     scope.launch { viewModel.ingestFromProviders() }
                                 }
                             }
                             // Best-effort: observe Samsung RCS if accessible
                             val rcsObserver = object : ContentObserver(handler) {
                                 override fun onChange(selfChange: Boolean, uri: Uri?) {
-                                    AppLogger.d("ContentObserver RCS changed uri=$uri")
+                                    AppLogger.d("ContentObserver RCS changed uri=$uri ts=${System.currentTimeMillis()}")
                                     scope.launch { viewModel.ingestFromProviders() }
                                 }
                             }

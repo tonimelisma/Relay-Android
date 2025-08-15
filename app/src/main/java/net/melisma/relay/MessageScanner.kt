@@ -299,6 +299,14 @@ object MessageScanner {
         return metas
     }
 
+    // Public single-message variant to avoid expensive bulk prefetching
+    fun scanMmsPartsMetaFor(contentResolver: ContentResolver, mmsId: Long): List<MmsPartMeta> {
+        val t0 = System.currentTimeMillis()
+        val metas = resolveMmsPartsMeta(contentResolver, mmsId)
+        AppLogger.d("scanMmsPartsMetaFor mmsId=$mmsId parts=${metas.size} took=${System.currentTimeMillis() - t0}ms")
+        return metas
+    }
+
     private fun resolveMmsSender(contentResolver: ContentResolver, mmsId: Long): String? {
         // Addr table per message: content://mms/<id>/addr, columns include address, type
         // Heuristic: type=137 is 'from' per common references

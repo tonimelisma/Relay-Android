@@ -21,14 +21,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         val messageDao = AppDatabase.getInstance(application).messageDao()
         messageRepository = MessageRepository(messageDao)
+        val t0 = System.currentTimeMillis()
         messages = messageRepository.observeMessagesWithParts()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        AppLogger.i("MainViewModel messages flow initialized in ${System.currentTimeMillis() - t0}ms")
         AppLogger.i("MainViewModel initialized; messages flow subscribed")
     }
 
     fun ingestFromProviders() {
         viewModelScope.launch {
-            AppLogger.i("MainViewModel.ingestFromProviders trigger")
+            AppLogger.i("MainViewModel.ingestFromProviders trigger @${System.currentTimeMillis()}")
             messageRepository.ingestFromProviders(getApplication<Application>().contentResolver)
         }
     }

@@ -9,13 +9,14 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 ## 🧱 High-Level Architecture Summary
 
 - SMS is received via a manifest-declared `BroadcastReceiver` (`SmsReceiver`).
-- MMS notifications are received via WAP push (`MmsReceiver`, `application/vnd.wap.mms-message`). Manual provider scan reads MMS text parts (`content://mms/part`) and sender (`content://mms/<id>/addr`). RCS is heuristic via MMS DB content types and optional `content://im/chat` where available.
+- MMS notifications are received via WAP push (`MmsReceiver`, `application/vnd.wap.mms-message`). Provider scans read MMS text parts (`content://mms/part`) and sender (`content://mms/<id>/addr`). RCS is heuristic via MMS DB content types and optional `content://im/chat` where available.
 - Receivers trigger repository ingest on a background thread and persist directly into Room (no in-memory intermediary).
-- Messages are stored in a local Room database with MMS parts/addresses.
- - Messages are stored in a local Room database mirroring provider fields (SMS/MMS), including MMS parts and addresses.
+- Messages are stored in a local Room database mirroring provider fields with MMS parts/addresses.
+- Foreground change detection via content observers on `content://sms` and `content://mms` (and best-effort `content://im/chat` for RCS). Manual scan and foreground polling were removed.
+- Background periodic ingest via WorkManager (~15 min) catches missed broadcasts and RCS. Scheduled on app start and after boot.
 - A background WorkManager job will upload unsynced messages (Phase 5+)
-- The UI will observe the local DB and reflect sync status (Phase 4+)
-- Messages will be deduplicated using a content-based hash (Phase 4+)
+- The UI observes the local DB and reflects changes; no manual refresh button.
+- Messages are deduplicated using a content-based hash.
 
 ---
 
@@ -65,8 +66,11 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 
 ### Incremental Ingest & Permissions Gate
 
-- On first run per kind, perform a full scan. Then incremental ingest reads providers only for items with `timestamp > MAX(timestamp)` per kind (SMS/MMS/RCS) and inserts new rows. Inserts are batched transactionally to minimize UI emissions.
-- Ingest runs automatically at app start (when permissions are granted) and on-demand via a button; `MainViewModel` centralizes both. Content observers on `content://sms` and `content://mms` trigger ingest on changes, and lifecycle-aware polling (~10s) runs while the app is foregrounded.
+- On first run per kind, perform a full scan. Then incremental ingest filters by provider id per kind (new rows have `providerId > lastSeen`). Inserts are batched transactionally to minimize UI emissions.
+- Ingest runs automatically at app start (when permissions are granted). Content observers on `content://sms`, `content://mms`, and best-effort `content://im/chat` trigger ingest on changes while the app is foregrounded. The previous foreground polling loop (~10s) and manual scan button were removed.
+- WorkManager performs periodic ingest in the background to catch missed broadcasts and all RCS.
+- Permissions gate: if required permissions (READ_SMS, RECEIVE_SMS, RECEIVE_MMS, RECEIVE_WAP_PUSH) are missing, the UI renders only the explanation + request flow; list is hidden until all are granted.
+- A simple concurrency guard ensures only one ingest runs at a time.
 - Permissions gate: if required permissions (READ_SMS, RECEIVE_SMS, RECEIVE_MMS, RECEIVE_WAP_PUSH) are missing, the UI renders only the explanation + request flow; list is hidden until all are granted.
 
 **Why:** Room provides type-safe queries, lifecycle awareness, and easy testing support.
@@ -88,7 +92,7 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 
 ### 4. UI Layer
 
-- Compose observes `MainViewModel.messages` (backed by Room Flow `observeMessagesWithParts()`) using `collectAsState()`. A "Scan SMS/MMS/RCS" button triggers `MainViewModel.ingestFromProviders()`.
+- Compose observes `MainViewModel.messages` (backed by Room Flow `observeMessagesWithParts()`) using `collectAsState()`. No manual scan button; updates come from receivers, observers, and background worker.
 - UI shows:
   - List of messages
   - Sync status
@@ -128,6 +132,15 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 - Hash is sent with cloud uploads to prevent re-processing
 
 **Why:** SMS IDs vary between Android versions and devices — content-based hashes are more reliable.
+
+---
+
+## ⚙️ Implementation Notes
+
+- Ingestion concurrency guard via `AtomicBoolean` to prevent overlapping runs.
+- MMS parts/addresses are fetched on-demand per new MMS instead of bulk-prefetching to reduce UI update latency.
+- RCS timestamps are normalized to ms; Samsung provider timestamps are used rather than `System.currentTimeMillis()`.
+- Room destructive migrations allowed during pre-release via `fallbackToDestructiveMigration(true)`.
 
 ---
 
