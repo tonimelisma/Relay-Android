@@ -57,8 +57,59 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        // Schedule background sync worker
-        MessageSyncWorker.schedule(applicationContext)
+        // Background sync scheduling is handled by BootReceiver and onStart() health check
+    }
+
+    override fun onStart() {
+        super.onStart()
+        checkSyncWorkerStatus()
+        checkStandbyBucketAndNotify()
+    }
+
+    private fun checkSyncWorkerStatus() {
+        val wm = androidx.work.WorkManager.getInstance(this)
+        wm.getWorkInfosForUniqueWorkLiveData(MessageSyncWorker.UNIQUE_WORK_NAME)
+            .observe(this, androidx.lifecycle.Observer { workInfos ->
+                if (workInfos == null || workInfos.isEmpty()) {
+                    AppLogger.w("Sync work not scheduled. Enqueuing now.")
+                    MessageSyncWorker.schedule(applicationContext)
+                    return@Observer
+                }
+                val info = workInfos.first()
+                when (info.state) {
+                    androidx.work.WorkInfo.State.CANCELLED -> {
+                        AppLogger.w("Sync work was cancelled. Rescheduling.")
+                        MessageSyncWorker.schedule(applicationContext)
+                    }
+                    androidx.work.WorkInfo.State.ENQUEUED -> AppLogger.d("Sync work enqueued and healthy")
+                    androidx.work.WorkInfo.State.RUNNING -> AppLogger.d("Sync work running")
+                    else -> Unit
+                }
+            })
+    }
+
+    
+
+    private fun checkStandbyBucketAndNotify() {
+        val ctx = this
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            val usm = getSystemService(android.content.Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+            val bucket = usm.appStandbyBucket
+            val label = when (bucket) {
+                android.app.usage.UsageStatsManager.STANDBY_BUCKET_ACTIVE -> "Active"
+                android.app.usage.UsageStatsManager.STANDBY_BUCKET_WORKING_SET -> "Working Set"
+                android.app.usage.UsageStatsManager.STANDBY_BUCKET_FREQUENT -> "Frequent"
+                android.app.usage.UsageStatsManager.STANDBY_BUCKET_RARE -> "Rare"
+                android.app.usage.UsageStatsManager.STANDBY_BUCKET_RESTRICTED -> "Restricted"
+                else -> "Unknown"
+            }
+            AppLogger.i("Current standby bucket: $label")
+            if (label == "Rare" || label == "Restricted") {
+                try {
+                    android.widget.Toast.makeText(ctx, "Background sync may be limited ($label)", android.widget.Toast.LENGTH_LONG).show()
+                } catch (_: Throwable) { }
+            }
+        }
     }
 }
 
@@ -107,6 +158,18 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
             .padding(all = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Last sync time
+        run {
+            val ts = LocalContext.current.getSharedPreferences("app_meta", android.content.Context.MODE_PRIVATE)
+                .getLong("lastSyncSuccessTs", 0L)
+            val text = if (ts > 0L) {
+                val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+                "Last synced: ${fmt.format(java.util.Date(ts))}"
+            } else {
+                "Last synced: —"
+            }
+            Text(text = text)
+        }
         if (!permissionsGranted) {
             Text(text = "Permission status: Denied")
             Button(onClick = {

@@ -13,9 +13,9 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 - Receivers trigger repository ingest on a background thread and persist directly into Room (no in-memory intermediary).
 - Messages are stored in a local Room database mirroring provider fields with MMS parts/addresses.
 - Foreground change detection via content observers on `content://sms` and `content://mms` (and best-effort `content://im/chat` for RCS). Manual scan and foreground polling were removed.
-- Background periodic ingest via WorkManager (~15 min) catches missed broadcasts and RCS. Scheduled on app start and after boot.
+- Background periodic ingest via WorkManager (~15 min) catches missed broadcasts and RCS. Scheduled after boot via `BootReceiver`; `MainActivity` onStart() verifies health and reschedules only if missing/cancelled.
 - A background WorkManager job will upload unsynced messages (Phase 5+)
-- The UI observes the local DB and reflects changes; no manual refresh button.
+- The UI observes the local DB and reflects changes; no manual refresh button. The UI also surfaces a "Last synced" label read from `SharedPreferences` (`lastSyncSuccessTs`) updated by `MessageSyncWorker` on success.
 - Messages are deduplicated using a content-based hash.
 
 ---

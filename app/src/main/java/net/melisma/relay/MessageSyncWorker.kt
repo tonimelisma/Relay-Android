@@ -18,6 +18,12 @@ class MessageSyncWorker(appContext: Context, params: WorkerParameters) : Corouti
             val repo = MessageRepository(db.messageDao())
             repo.ingestFromProviders(applicationContext.contentResolver)
             AppLogger.i("MessageSyncWorker.doWork success @${System.currentTimeMillis()}")
+            try {
+                applicationContext.getSharedPreferences("app_meta", Context.MODE_PRIVATE)
+                    .edit()
+                    .putLong("lastSyncSuccessTs", System.currentTimeMillis())
+                    .apply()
+            } catch (_: Throwable) { }
             Result.success()
         } catch (t: Throwable) {
             AppLogger.e("MessageSyncWorker.doWork failed", t)
@@ -26,7 +32,7 @@ class MessageSyncWorker(appContext: Context, params: WorkerParameters) : Corouti
     }
 
     companion object {
-        private const val UNIQUE_WORK_NAME = "message-sync-worker"
+        const val UNIQUE_WORK_NAME = "message-sync-worker"
 
         fun schedule(appContext: Context) {
             val request = PeriodicWorkRequestBuilder<MessageSyncWorker>(15, TimeUnit.MINUTES)

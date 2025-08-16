@@ -22,7 +22,8 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Relay">
+        android:theme="@style/Theme.Relay"
+        android:name=".RelayApp">
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"

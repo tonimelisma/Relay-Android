@@ -127,7 +127,7 @@ App shows historical and live messages together.
 - Add content observers on `content://sms` and `content://mms` (and best-effort RCS provider) to react to provider changes while app is foregrounded
 - Remove foreground periodic polling (10s loop) and remove manual scan button
 - Add background periodic sync using WorkManager approximately every 15 minutes to catch missed broadcasts and all RCS
-- Schedule the periodic sync on app start and after device boot via a `BootReceiver`
+- Schedule the periodic sync after device boot via a `BootReceiver`; on app foreground (`onStart`) verify and reschedule only if missing/cancelled
 - Gate UI: if required permissions (READ_SMS, RECEIVE_SMS, RECEIVE_MMS, RECEIVE_WAP_PUSH) are not granted, show only an explanation + permission request button. If granted, show the Scan button and unified message list
 
 **Deliverable:**  
