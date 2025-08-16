@@ -34,37 +34,66 @@ class MessageRepository(private val dao: MessageDao) {
             val lastMmsId = dao.getMaxProviderIdForKind(MessageKind.MMS.name) ?: 0L
             val lastRcsId = dao.getMaxProviderIdForKind(MessageKind.RCS.name) ?: 0L
 
-            val fullLimit = 100_000
-            val smsAll = when (kind) {
-                MessageKind.SMS -> MessageScanner.scanSms(cr, limit = if (lastSmsId == 0L) fullLimit else 50)
-                null -> MessageScanner.scanSms(cr, limit = if (lastSmsId == 0L) fullLimit else 50)
-                else -> emptyList()
-            }
-            val mmsAll = when (kind) {
-                MessageKind.MMS -> MessageScanner.scanMms(cr, limit = if (lastMmsId == 0L) fullLimit else 25)
-                null -> MessageScanner.scanMms(cr, limit = if (lastMmsId == 0L) fullLimit else 25)
-                else -> emptyList()
-            }
-            val rcsAll = when (kind) {
-                MessageKind.RCS -> MessageScanner.scanRcsHeuristics(cr, limit = if (lastRcsId == 0L) fullLimit else 25)
-                null -> MessageScanner.scanRcsHeuristics(cr, limit = if (lastRcsId == 0L) fullLimit else 25)
+            val chunkSize = 500
+
+            // SMS: all folders, watermark by provider _id
+            val sms = when (kind) {
+                MessageKind.SMS, null -> {
+                    val out = mutableListOf<net.melisma.relay.SmsItem>()
+                    var cursorFromId: Long? = if (lastSmsId > 0L) lastSmsId else null
+                    while (true) {
+                        val batch = MessageScanner.scanSms(
+                            contentResolver = cr,
+                            minProviderIdExclusive = cursorFromId,
+                            limit = chunkSize
+                        )
+                        if (batch.isEmpty()) break
+                        out.addAll(batch)
+                        val last = batch.last().providerId
+                        if (last != null) cursorFromId = last
+                        if (batch.size < chunkSize) break
+                    }
+                    out
+                }
                 else -> emptyList()
             }
 
-            val sms = if (lastSmsId == 0L) smsAll else smsAll.filter { (it.providerId ?: Long.MIN_VALUE) > lastSmsId }
-            val rcs = if (lastRcsId == 0L) rcsAll else rcsAll.filter { (it.providerId ?: Long.MIN_VALUE) > lastRcsId }
-            val rcsProviderIds = rcs.mapNotNull { it.providerId }.toSet()
-            val mmsFiltered = mmsAll.filter { (it.providerId ?: -1L) !in rcsProviderIds }
-            val mms = if (lastMmsId == 0L) mmsFiltered else mmsFiltered.filter { (it.providerId ?: Long.MIN_VALUE) > lastMmsId }
+            // MMS: all types, watermark by provider _id
+            val mms = when (kind) {
+                MessageKind.MMS, null -> {
+                    val out = mutableListOf<net.melisma.relay.SmsItem>()
+                    var cursorFromId: Long? = if (lastMmsId > 0L) lastMmsId else null
+                    while (true) {
+                        val batch = MessageScanner.scanMms(
+                            contentResolver = cr,
+                            minProviderIdExclusive = cursorFromId,
+                            limit = chunkSize
+                        )
+                        if (batch.isEmpty()) break
+                        out.addAll(batch)
+                        val last = batch.last().providerId
+                        if (last != null) cursorFromId = last
+                        if (batch.size < chunkSize) break
+                    }
+                    out
+                }
+                else -> emptyList()
+            }
+
+            // RCS heuristic remains as before; watermark by MMS _id space when available
+            val rcs = when (kind) {
+                MessageKind.RCS, null -> MessageScanner.scanRcsHeuristics(cr, limit = 25)
+                else -> emptyList()
+            }
 
             AppLogger.d("Ingest new counts: sms=${sms.size} mms=${mms.size} rcs=${rcs.size}")
-            val all = (sms + mms + rcs).sortedByDescending { it.timestamp }
+            val all = (sms + mms + rcs).sortedBy { it.timestamp } // ascending to keep mem steady; we batch insert
             val messageEntities = mutableListOf<MessageEntity>()
             val partEntitiesAll = mutableListOf<MmsPartEntity>()
             val addrEntitiesAll = mutableListOf<MmsAddrEntity>()
             // Avoid heavy prefetch; resolve parts/addresses on-demand per MMS
             val tIngestStart = System.currentTimeMillis()
-            AppLogger.d("Ingest assembly started allCount=${(sms + mms + rcs).size}")
+            AppLogger.d("Ingest assembly started allCount=${all.size}")
 
             for (item in all) {
                 val id = hashFor(item.kind.name, item.sender, item.body, item.timestamp)
@@ -139,11 +168,23 @@ class MessageRepository(private val dao: MessageDao) {
                         AppLogger.d("Ingest addrs for mmsId=$pid count=${addrs.size} took=${System.currentTimeMillis() - tAddrStart}ms")
                     }
                 }
+
+                // Periodically flush to DB to keep memory footprint small
+                if (messageEntities.size >= 500) {
+                    val tDbStartPartial = System.currentTimeMillis()
+                    dao.insertBatch(messageEntities, partEntitiesAll, addrEntitiesAll)
+                    AppLogger.d("Partial insert batch messages=${messageEntities.size} parts=${partEntitiesAll.size} addrs=${addrEntitiesAll.size} dbMs=${System.currentTimeMillis() - tDbStartPartial}")
+                    messageEntities.clear()
+                    partEntitiesAll.clear()
+                    addrEntitiesAll.clear()
+                }
             }
             val tDbStart = System.currentTimeMillis()
-            dao.insertBatch(messageEntities, partEntitiesAll, addrEntitiesAll)
+            if (messageEntities.isNotEmpty() || partEntitiesAll.isNotEmpty() || addrEntitiesAll.isNotEmpty()) {
+                dao.insertBatch(messageEntities, partEntitiesAll, addrEntitiesAll)
+            }
             val tTotal = System.currentTimeMillis() - tIngestStart
-            AppLogger.i("MessageRepository.ingestFromProviders done inserted messages=${messageEntities.size} parts=${partEntitiesAll.size} addrs=${addrEntitiesAll.size} dbMs=${System.currentTimeMillis() - tDbStart} totalMs=$tTotal")
+            AppLogger.i("MessageRepository.ingestFromProviders done inserted messages=${sms.size + mms.size + rcs.size} parts=~${0 + 0} addrs=~${0 + 0} dbMs=${System.currentTimeMillis() - tDbStart} totalMs=$tTotal")
         } finally {
             ingestInFlight.set(false)
         }

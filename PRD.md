@@ -121,7 +121,7 @@ App shows historical and live messages together.
 **Objective:** Smart incremental ingest from providers gated by permissions.
 
 **Requirements:**
-- Implement ingest that performs an initial full scan per kind (when no prior items exist), then incrementally queries new items by provider id per kind
+- Implement ingest that performs an initial full scan per kind (when no prior items exist), then incrementally queries new items by provider id per kind using ascending `_id` with chunked queries to avoid caps and ensure completeness across all folders
 - Run ingest automatically on app start (if permissions are granted); centralized in `MainViewModel`
 - Receivers trigger ingest on new events so UI updates promptly from Room
 - Add content observers on `content://sms` and `content://mms` (and best-effort RCS provider) to react to provider changes while app is foregrounded

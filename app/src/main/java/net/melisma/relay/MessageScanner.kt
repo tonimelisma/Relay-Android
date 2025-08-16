@@ -5,7 +5,11 @@ import android.net.Uri
 import android.provider.Telephony
 
 object MessageScanner {
-    fun scanSms(contentResolver: ContentResolver, limit: Int = 50): List<SmsItem> {
+    fun scanSms(
+        contentResolver: ContentResolver,
+        minProviderIdExclusive: Long? = null,
+        limit: Int? = null
+    ): List<SmsItem> {
         val results = mutableListOf<SmsItem>()
         AppLogger.d("MessageScanner.scanSms start")
         val projection = arrayOf(
@@ -24,18 +28,21 @@ object MessageScanner {
             Telephony.Sms.LOCKED,
             Telephony.Sms.ERROR_CODE
         )
-        val selection = "${Telephony.Sms.TYPE} = ?"
-        val selectionArgs = arrayOf(Telephony.Sms.MESSAGE_TYPE_INBOX.toString())
-        val sort = "${Telephony.Sms.DATE} DESC"
+        val selection = if (minProviderIdExclusive != null) "${Telephony.Sms._ID} > ?" else null
+        val selectionArgs = if (minProviderIdExclusive != null) arrayOf(minProviderIdExclusive.toString()) else null
+        val sort = if (minProviderIdExclusive != null) "${Telephony.Sms._ID} ASC" else "${Telephony.Sms.DATE} DESC"
+        var uri = Telephony.Sms.CONTENT_URI
+        if (limit != null) {
+            uri = uri.buildUpon().appendQueryParameter("limit", limit.toString()).build()
+        }
         val cursor = contentResolver.query(
-            Telephony.Sms.CONTENT_URI,
+            uri,
             projection,
             selection,
             selectionArgs,
             sort
         )
         cursor?.use { c ->
-            var count = 0
             val idCol = c.getColumnIndex(Telephony.Sms._ID)
             val threadCol = c.getColumnIndex(Telephony.Sms.THREAD_ID)
             val addrCol = c.getColumnIndex(Telephony.Sms.ADDRESS)
@@ -50,7 +57,8 @@ object MessageScanner {
             val seenCol = c.getColumnIndex(Telephony.Sms.SEEN)
             val lockedCol = c.getColumnIndex(Telephony.Sms.LOCKED)
             val errCol = c.getColumnIndex(Telephony.Sms.ERROR_CODE)
-            while (c.moveToNext() && count < limit) {
+            var count = 0
+            while (c.moveToNext()) {
                 val rowId = if (idCol >= 0) c.getLong(idCol) else null
                 val threadId = if (threadCol >= 0) c.getLong(threadCol) else null
                 val sender = if (addrCol >= 0) c.getString(addrCol) else null
@@ -79,22 +87,29 @@ object MessageScanner {
                     )
                 )
                 count++
+                if (limit != null && count >= limit) break
             }
         }
         AppLogger.i("MessageScanner.scanSms done count=${results.size}")
         return results
     }
-    fun scanMms(contentResolver: ContentResolver, limit: Int = 25): List<SmsItem> {
+    fun scanMms(
+        contentResolver: ContentResolver,
+        minProviderIdExclusive: Long? = null,
+        limit: Int? = null
+    ): List<SmsItem> {
         val results = mutableListOf<SmsItem>()
         val projection = arrayOf("_id", "date", "sub", "ct_t", "thread_id", "date_sent", "read", "m_type")
-        val sort = "date DESC"
+        val sort = if (minProviderIdExclusive != null) "_id ASC" else "date DESC"
         AppLogger.d("MessageScanner.scanMms start")
-        // Inbound-only focus: include RETRIEVE_CONF (132) and NOTIFICATION_IND (130)
-        val selection = "m_type IN (?, ?)"
-        val selectionArgs = arrayOf("132", "130")
-        val cursor = contentResolver.query(Telephony.Mms.CONTENT_URI, projection, selection, selectionArgs, sort)
+        val selection = if (minProviderIdExclusive != null) "_id > ?" else null
+        val selectionArgs = if (minProviderIdExclusive != null) arrayOf(minProviderIdExclusive.toString()) else null
+        var uri = Telephony.Mms.CONTENT_URI
+        if (limit != null) {
+            uri = uri.buildUpon().appendQueryParameter("limit", limit.toString()).build()
+        }
+        val cursor = contentResolver.query(uri, projection, selection, selectionArgs, sort)
         cursor?.use { c ->
-            var count = 0
             val idCol = c.getColumnIndex("_id")
             val dateCol = c.getColumnIndex("date")
             val subCol = c.getColumnIndex("sub")
@@ -103,7 +118,8 @@ object MessageScanner {
             val dateSentCol = c.getColumnIndex("date_sent")
             val readCol = c.getColumnIndex("read")
             val boxCol = c.getColumnIndex("m_type")
-            while (c.moveToNext() && count < limit) {
+            var count = 0
+            while (c.moveToNext()) {
                 val id = if (idCol >= 0) c.getLong(idCol) else -1L
                 // MMS date column is in seconds; convert to ms
                 val tsRaw = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
@@ -140,6 +156,7 @@ object MessageScanner {
                     )
                 )
                 count++
+                if (limit != null && count >= limit) break
             }
         }
         AppLogger.i("MessageScanner.scanMms done count=${results.size}")

@@ -81,10 +81,11 @@
 - Optimized MMS detail ingest: fetch parts/addresses on-demand per inserted MMS (reduced UI latency)
 - Kept `synced=0` on insert; destructive migrations allowed pre-release
 
-## 0.7.1 - File logging, AppExitInfo dedup, and Last Sync surfacing
+## 0.7.1 - File logging, AppExitInfo dedup, Last Sync, and full SMS/MMS syncing
 
 - Implemented rotating file logger writing to `files/logs/` while preserving Logcat output (`AppLogger`)
 - Added `RelayApp` to initialize logging and log only the most recent `ApplicationExitInfo` once per new exit; stored in `SharedPreferences` as `lastExitLoggedTs`
 - `MessageSyncWorker` now stores `lastSyncSuccessTs` in `SharedPreferences` on success
 - UI (`MainActivity`) displays "Last synced:" from `lastSyncSuccessTs`
 - Removed redundant periodic worker scheduling in `MainActivity.onCreate` to avoid WorkManager churn; rely on `BootReceiver` and an onStart() health check
+- Switched to watermark-based, chunked syncing of all SMS and MMS folders using provider `_id` with ascending queries; eliminates 50/25 caps and avoids missed bursts

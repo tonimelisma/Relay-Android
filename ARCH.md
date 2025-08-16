@@ -66,7 +66,7 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 
 ### Incremental Ingest & Permissions Gate
 
-- On first run per kind, perform a full scan. Then incremental ingest filters by provider id per kind (new rows have `providerId > lastSeen`). Inserts are batched transactionally to minimize UI emissions.
+- On first run per kind, perform a full scan. Then incremental ingest filters by provider id per kind (new rows have `providerId > lastSeen`) using ascending, chunked `_id` queries to cover all folders (not just inbox) without arbitrary caps. Inserts are batched transactionally to minimize UI emissions and memory usage.
 - Ingest runs automatically at app start (when permissions are granted). Content observers on `content://sms`, `content://mms`, and best-effort `content://im/chat` trigger ingest on changes while the app is foregrounded. The previous foreground polling loop (~10s) and manual scan button were removed.
 - WorkManager performs periodic ingest in the background to catch missed broadcasts and all RCS.
 - Permissions gate: if required permissions (READ_SMS, RECEIVE_SMS, RECEIVE_MMS, RECEIVE_WAP_PUSH) are missing, the UI renders only the explanation + request flow; list is hidden until all are granted.
