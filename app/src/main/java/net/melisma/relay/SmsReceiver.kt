@@ -13,7 +13,7 @@ class SmsReceiver : BroadcastReceiver() {
         AppLogger.d("SmsReceiver.onReceive action='${intent.action}'")
         if (Telephony.Sms.Intents.SMS_RECEIVED_ACTION == intent.action) {
             AppLogger.i("SmsReceiver handling SMS_RECEIVED → trigger DB ingest")
-            val pending = goAsync()
+            val pending = try { goAsync() } catch (t: Throwable) { null }
             val scope = (context.applicationContext as RelayApp).applicationScope
             scope.launch {
                 try {
@@ -24,7 +24,7 @@ class SmsReceiver : BroadcastReceiver() {
                 } catch (t: Throwable) {
                     AppLogger.e("SmsReceiver DB ingest failed", t)
                 } finally {
-                    pending.finish()
+                    pending?.finish()
                 }
             }
         }

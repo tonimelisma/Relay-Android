@@ -16,7 +16,7 @@ class MmsReceiver : BroadcastReceiver() {
         if (Telephony.Sms.Intents.WAP_PUSH_RECEIVED_ACTION == action &&
             type == "application/vnd.wap.mms-message") {
             AppLogger.i("MmsReceiver received WAP_PUSH → trigger DB ingest for MMS")
-            val pending = goAsync()
+            val pending = try { goAsync() } catch (t: Throwable) { null }
             val scope = (context.applicationContext as RelayApp).applicationScope
             scope.launch {
                 try {
@@ -27,7 +27,7 @@ class MmsReceiver : BroadcastReceiver() {
                 } catch (t: Throwable) {
                     AppLogger.e("MmsReceiver DB ingest failed", t)
                 } finally {
-                    pending.finish()
+                    pending?.finish()
                 }
             }
         }
