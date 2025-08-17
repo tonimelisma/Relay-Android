@@ -21,7 +21,55 @@ data class SmsItem(
     val protocol: Int? = null,
     val seen: Int? = null,
     val locked: Int? = null,
-    val errorCode: Int? = null
+    val errorCode: Int? = null,
+    val addresses: List<MessageAddress> = emptyList(),
+    // MMS-only: full parts listing (text + attachments). Non-UI usage; UI may render later.
+    val parts: List<MessagePart> = emptyList()
+    ,
+    val smilLayout: SmilLayout? = null
+)
+
+enum class MessagePartType { TEXT, IMAGE, VIDEO, AUDIO, VCARD, OTHER }
+
+data class MessageAddress(
+    val address: String,
+    val type: String // From | To | Cc | Bcc
+)
+
+data class MessagePart(
+    val partId: Long,
+    val messageId: Long,
+    val contentType: String?,
+    // Local file path for stored attachment (if copied)
+    val localUriPath: String? = null,
+    val filename: String?,
+    val text: String?,
+    val isAttachment: Boolean,
+    val type: MessagePartType = MessagePartType.OTHER,
+    val size: Long? = null,
+    val contentId: String? = null,
+    val contentLocation: String? = null
+)
+
+data class SmilPresentation(
+    val slides: List<SmilSlide>
+)
+
+data class SmilSlide(
+    val items: List<SmilItem>,
+    val region: String? = null,
+    val durationMs: Long? = null
+)
+
+data class SmilItem(
+    val type: String, // image | video | audio | text
+    val src: String?,
+    val region: String? = null,
+    val text: String? = null
+)
+
+data class SmilLayout(
+    val partOrder: List<Long>
 )
 
 

@@ -125,6 +125,19 @@ object MessageScanner {
 
                 val sender = resolveMmsSender(contentResolver, id)
                 val textBody = resolveMmsTextParts(contentResolver, id)
+                val parts = resolveMmsParts(contentResolver, id)
+                val addresses = scanMmsAddrs(contentResolver, id).mapNotNull { row ->
+                    val human = when (row.type) {
+                        137 -> "From"
+                        151 -> "To"
+                        130 -> "Cc"
+                        129 -> "Bcc"
+                        else -> null
+                    }
+                    row.address?.let { addr -> human?.let { MessageAddress(addr, it) } }
+                }
+                val smil = parts.firstOrNull { it.contentType?.equals("application/smil", ignoreCase = true) == true && !it.text.isNullOrBlank() }?.text
+                val smilLayout = smil?.let { buildSmilLayoutFromText(it, parts) }
 
                 val finalBody = when {
                     !textBody.isNullOrBlank() -> textBody
@@ -144,7 +157,10 @@ object MessageScanner {
                         read = read,
                         dateSent = dateSent,
                         subject = sub,
-                        mmsContentType = ctT
+                        mmsContentType = ctT,
+                        parts = parts,
+                        addresses = addresses,
+                        smilLayout = smilLayout
                     )
                 )
                 count++
@@ -153,6 +169,174 @@ object MessageScanner {
         }
         AppLogger.i("MessageScanner.scanMms done count=${results.size}")
         return results
+    }
+    /**
+     * Builds MessagePart list for a given MMS id from content://mms/part rows.
+     * This does not copy data locally; it provides enough info for repository to persist attachments.
+     */
+    private fun resolveMmsParts(contentResolver: ContentResolver, mmsId: Long): List<MessagePart> {
+        val partUri = Uri.parse("content://mms/part")
+        val selection = "mid=?"
+        val args = arrayOf(mmsId.toString())
+        val parts = mutableListOf<MessagePart>()
+        try {
+            contentResolver.query(
+                partUri,
+                arrayOf("_id", "ct", "name", "fn", "text", "_data", "cid", "cl", "ctt_s"),
+                selection,
+                args,
+                null
+            )?.use { pc ->
+                val idCol = pc.getColumnIndex("_id")
+                val ctCol = pc.getColumnIndex("ct")
+                val nameCol = pc.getColumnIndex("name")
+                val fnCol = pc.getColumnIndex("fn")
+                val textCol = pc.getColumnIndex("text")
+                val dataCol = pc.getColumnIndex("_data")
+                val cidCol = pc.getColumnIndex("cid")
+                val clCol = pc.getColumnIndex("cl")
+                val sizeCol = pc.getColumnIndex("ctt_s")
+                while (pc.moveToNext()) {
+                    val pid = if (idCol >= 0) pc.getLong(idCol) else -1L
+                    val ct = if (ctCol >= 0) pc.getString(ctCol) else null
+                    val name = if (nameCol >= 0) pc.getString(nameCol) else null
+                    val fn = if (fnCol >= 0) pc.getString(fnCol) else null
+                    val dataRef = if (dataCol >= 0) pc.getString(dataCol) else null
+                    val text = if (textCol >= 0) pc.getString(textCol) else null
+                    val isAttachment = ct != null && !ct.startsWith("text/")
+                    val contentId = if (cidCol >= 0) pc.getString(cidCol) else null
+                    val contentLoc = if (clCol >= 0) pc.getString(clCol) else null
+                    val size = if (sizeCol >= 0) pc.getLong(sizeCol) else null
+                    val localPath = if (!dataRef.isNullOrBlank() && isAttachment) {
+                        copyPartToLocalStorage(contentResolver, pid, inferFileName(name, fn, ct))
+                    } else null
+                    val type = when {
+                        ct == null -> MessagePartType.OTHER
+                        ct.startsWith("image/") -> MessagePartType.IMAGE
+                        ct.startsWith("video/") -> MessagePartType.VIDEO
+                        ct.startsWith("audio/") -> MessagePartType.AUDIO
+                        ct.equals("text/vcard", ignoreCase = true) || ct.equals("text/x-vcard", ignoreCase = true) -> MessagePartType.VCARD
+                        ct.startsWith("text/") -> MessagePartType.TEXT
+                        else -> MessagePartType.OTHER
+                    }
+                    parts.add(
+                        MessagePart(
+                            partId = pid,
+                            messageId = mmsId,
+                            contentType = ct,
+                            localUriPath = localPath,
+                            filename = name ?: fn,
+                            text = if (!isAttachment) text else null,
+                            isAttachment = isAttachment,
+                            type = type,
+                            size = size,
+                            contentId = contentId,
+                            contentLocation = contentLoc
+                        )
+                    )
+                }
+            }
+        } catch (t: Throwable) {
+            AppLogger.w("resolveMmsParts failed: ${t.message}")
+        }
+        return parts
+    }
+
+    private fun inferFileName(name: String?, fn: String?, ct: String?): String {
+        val base = name ?: fn ?: "part"
+        val safe = base.replace('/', '_')
+        val ext = when {
+            ct == null -> ""
+            ct.startsWith("image/") -> ".jpg"
+            ct.startsWith("video/") -> ".mp4"
+            ct.startsWith("audio/") -> ".amr"
+            else -> ""
+        }
+        return if (safe.contains('.')) safe else safe + ext
+    }
+
+    private fun copyPartToLocalStorage(cr: ContentResolver, partId: Long, fileName: String): String? {
+        return try {
+            val uri = Uri.parse("content://mms/part/$partId")
+            val ctx = (cr as? android.content.ContextWrapper)?.baseContext ?: return null
+            val dir = java.io.File(ctx.filesDir, "mms_attachments")
+            if (!dir.exists()) dir.mkdirs()
+            val outFile = java.io.File(dir, fileName)
+            cr.openInputStream(uri)?.use { input ->
+                outFile.outputStream().use { output -> input.copyTo(output) }
+            }
+            outFile.absolutePath
+        } catch (t: Throwable) {
+            AppLogger.w("copyPartToLocalStorage failed: ${t.message}")
+            null
+        }
+    }
+
+    fun parseSmil(smilXml: String): SmilPresentation {
+        val slides = mutableListOf<SmilSlide>()
+        try {
+            val factory = org.xmlpull.v1.XmlPullParserFactory.newInstance()
+            val parser = factory.newPullParser()
+            parser.setInput(smilXml.reader())
+            var event = parser.eventType
+            var currentItems = mutableListOf<SmilItem>()
+            while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (event == org.xmlpull.v1.XmlPullParser.START_TAG) {
+                    when (parser.name.lowercase()) {
+                        "par" -> {
+                            currentItems = mutableListOf()
+                        }
+                        "img", "image" -> {
+                            currentItems.add(
+                                SmilItem(type = "image", src = parser.getAttributeValue(null, "src"), region = parser.getAttributeValue(null, "region"))
+                            )
+                        }
+                        "video" -> {
+                            currentItems.add(
+                                SmilItem(type = "video", src = parser.getAttributeValue(null, "src"), region = parser.getAttributeValue(null, "region"))
+                            )
+                        }
+                        "audio" -> {
+                            currentItems.add(
+                                SmilItem(type = "audio", src = parser.getAttributeValue(null, "src"), region = parser.getAttributeValue(null, "region"))
+                            )
+                        }
+                        "text" -> {
+                            currentItems.add(
+                                SmilItem(type = "text", src = parser.getAttributeValue(null, "src"), region = parser.getAttributeValue(null, "region"))
+                            )
+                        }
+                    }
+                } else if (event == org.xmlpull.v1.XmlPullParser.END_TAG) {
+                    if (parser.name.equals("par", ignoreCase = true)) {
+                        slides.add(SmilSlide(items = currentItems.toList()))
+                        currentItems.clear()
+                    }
+                }
+                event = parser.next()
+            }
+        } catch (t: Throwable) {
+            AppLogger.w("parseSmil failed: ${t.message}")
+        }
+        return SmilPresentation(slides)
+    }
+
+    private fun buildSmilLayoutFromText(smilXml: String, parts: List<MessagePart>): SmilLayout? {
+        return try {
+            val pres = parseSmil(smilXml)
+            val byCidOrCl = parts.associateBy { it.contentId ?: it.contentLocation }
+            val order = mutableListOf<Long>()
+            pres.slides.forEach { slide ->
+                slide.items.forEach { item ->
+                    val key = item.src
+                    val matched = if (key != null) byCidOrCl[key] else null
+                    if (matched != null) order.add(matched.partId)
+                }
+            }
+            if (order.isEmpty()) null else SmilLayout(order)
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     data class MmsDetailed(

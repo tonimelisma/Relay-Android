@@ -99,8 +99,8 @@ App shows historical and live messages together.
     - `seq` INTEGER NULL
     - `ct` TEXT NULL (MIME type, e.g. text/plain, image/jpeg)
     - `text` TEXT NULL (for text parts)
-    - `data` BLOB NULL (full bytes for image parts; used directly for small previews)
-    - `dataPath` TEXT NULL, `cd` TEXT NULL, `fn` TEXT NULL
+    - `data` BLOB NULL (legacy; new ingests prefer files on disk)
+    - `dataPath` TEXT NULL (absolute local file path for attachments), `cd` TEXT NULL, `fn` TEXT NULL
     - `name` TEXT NULL, `chset` TEXT NULL, `cid` TEXT NULL, `cl` TEXT NULL, `cttS` TEXT NULL, `cttT` TEXT NULL
     - `isImage` INTEGER NULL (0/1 convenience flag)
   - `mms_addr`
@@ -127,6 +127,7 @@ App shows historical and live messages together.
 - Add content observers on `content://sms` and `content://mms` (and best-effort RCS provider only if enabled by `ImProviderGate`) to react to provider changes while app is foregrounded
 - Remove foreground periodic polling (10s loop) and remove manual scan button
 - Add background periodic sync using WorkManager approximately every 15 minutes to catch missed broadcasts and all RCS
+  - `MmsReceiver` enqueues one-time `MessageSyncWorker` on WAP_PUSH (immediate tag) instead of doing DB work inline
 - Schedule the periodic sync after device boot via a `BootReceiver`; on app foreground (`onStart`) verify and reschedule only if missing/cancelled
 - Gate UI: if required permissions (READ_SMS, RECEIVE_SMS, RECEIVE_MMS, RECEIVE_WAP_PUSH) are not granted, show only an explanation + permission request button. If granted, show the Scan button and unified message list
 
@@ -143,6 +144,7 @@ Unified SMS/MMS/RCS list persists across app restarts and updates incrementally.
 - Cloud endpoint: `POST /messages`
 - Use WorkManager to enqueue upload job
 - Send payload: `{ sender, body, timestamp }`
+  - Transport DTOs: `SyncMessageDTO`/`SyncPartDTO` with base64 data for binary MMS parts; local storage remains file-based
 - Use network constraint: `NetworkType.CONNECTED`
 - Retry failed uploads (exponential backoff)
 - Optional: indicate upload success/failure in UI

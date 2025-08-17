@@ -3,6 +3,7 @@ package net.melisma.relay
 import android.content.Intent
 import android.provider.Telephony
 import androidx.test.core.app.ApplicationProvider
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -28,6 +29,27 @@ class ReceiversTest {
             type = "application/vnd.wap.mms-message"
         }
         receiver.onReceive(ctx, intent)
+    }
+
+    @Test
+    fun mmsReceiver_enqueuesOneTimeWork_onWapPush() {
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        // Initialize WorkManager test environment
+        val config = androidx.work.Configuration.Builder()
+            .setMinimumLoggingLevel(android.util.Log.DEBUG)
+            .setExecutor(androidx.work.testing.SynchronousExecutor())
+            .build()
+        androidx.work.testing.WorkManagerTestInitHelper.initializeTestWorkManager(ctx, config)
+
+        val receiver = MmsReceiver()
+        val intent = Intent(Telephony.Sms.Intents.WAP_PUSH_RECEIVED_ACTION).apply {
+            type = "application/vnd.wap.mms-message"
+        }
+        receiver.onReceive(ctx, intent)
+
+        val infos = androidx.work.WorkManager.getInstance(ctx)
+            .getWorkInfosByTag(MessageSyncWorker.TAG_IMMEDIATE).get()
+        assertTrue(infos.isNotEmpty())
     }
 
     @Test

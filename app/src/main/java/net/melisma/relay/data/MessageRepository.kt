@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import net.melisma.relay.MessageKind
 import net.melisma.relay.AppLogger
 import net.melisma.relay.MessageScanner
+import net.melisma.relay.MessagePart
 import net.melisma.relay.db.MessageDao
 import net.melisma.relay.db.MessageEntity
 import net.melisma.relay.db.MmsPartEntity
@@ -15,6 +16,7 @@ import net.melisma.relay.db.MessageWithParts
 import android.net.Uri
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.Base64
 
 class MessageRepository(private val dao: MessageDao) {
     companion object {
@@ -125,29 +127,60 @@ class MessageRepository(private val dao: MessageDao) {
                 if (item.kind == MessageKind.MMS) {
                     val pid = item.providerId ?: -1L
                     val tPartsStart = System.currentTimeMillis()
-                    val partsMeta = MessageScanner.scanMmsPartsMetaFor(cr, pid)
-                    val partEntities = partsMeta.mapNotNull { meta ->
-                        val isImage = meta.ct?.startsWith("image/") == true
-                        val blob = if (isImage) readPartBytes(cr, meta.partId) else null
-                        val textValue = if (!isImage && meta.ct?.startsWith("text/") == true) meta.text else null
-                        MmsPartEntity(
-                            partId = meta.partId.toString(),
-                            messageId = id,
-                            seq = meta.seq,
-                            ct = meta.ct,
-                            text = textValue,
-                            data = blob,
-                            dataPath = meta.dataPath,
-                            name = meta.name,
-                            chset = meta.chset,
-                            cid = meta.cid,
-                            cl = meta.cl,
-                            cttS = meta.cttS,
-                            cttT = meta.cttT,
-                            cd = meta.cd,
-                            fn = meta.fn,
-                            isImage = isImage
-                        )
+                    // Prefer SmsItem.parts when provided; fallback to meta scan
+                    val partsFromItem = item.parts
+                    val partEntities = if (partsFromItem.isNotEmpty()) {
+                        partsFromItem.mapNotNull { p ->
+                            val isImage = p.contentType?.startsWith("image/") == true
+                            val storedPath = if (p.isAttachment) p.localUriPath else null
+                            val textValue = if (!p.isAttachment) p.text else null
+                            MmsPartEntity(
+                                partId = p.partId.toString(),
+                                messageId = id,
+                                seq = null,
+                                ct = p.contentType,
+                                text = textValue,
+                                data = null, // store as file instead of blob
+                                dataPath = storedPath,
+                                name = p.filename,
+                                chset = null,
+                                cid = null,
+                                cl = null,
+                                cttS = null,
+                                cttT = null,
+                                cd = null,
+                                fn = p.filename,
+                                isImage = isImage
+                            )
+                        }
+                    } else {
+                        val partsMeta = MessageScanner.scanMmsPartsMetaFor(cr, pid)
+                        partsMeta.mapNotNull { meta ->
+                            val isImage = meta.ct?.startsWith("image/") == true
+                            val storedPath = if (isImage || (meta.ct != null && !meta.ct.startsWith("text/"))) {
+                                val contentUri = "content://mms/part/${meta.partId}"
+                                saveAttachmentToFiles(cr, contentUri, meta.fn ?: meta.name)
+                            } else null
+                            val textValue = if (!isImage && meta.ct?.startsWith("text/") == true) meta.text else null
+                            MmsPartEntity(
+                                partId = meta.partId.toString(),
+                                messageId = id,
+                                seq = meta.seq,
+                                ct = meta.ct,
+                                text = textValue,
+                                data = null,
+                                dataPath = storedPath ?: meta.dataPath,
+                                name = meta.name,
+                                chset = meta.chset,
+                                cid = meta.cid,
+                                cl = meta.cl,
+                                cttS = meta.cttS,
+                                cttT = meta.cttT,
+                                cd = meta.cd,
+                                fn = meta.fn,
+                                isImage = isImage
+                            )
+                        }
                     }
                     partEntitiesAll.addAll(partEntities)
                     AppLogger.d("Ingest parts for mmsId=$pid parts=${partEntities.size} took=${System.currentTimeMillis() - tPartsStart}ms")
@@ -197,6 +230,61 @@ class MessageRepository(private val dao: MessageDao) {
         } catch (t: Throwable) {
             null
         }
+    }
+
+    private fun saveAttachmentToFiles(cr: ContentResolver, contentRef: String, filename: String?): String? {
+        return try {
+            val uri = Uri.parse(contentRef)
+            val dir = java.io.File((cr as? android.content.ContextWrapper)?.baseContext?.filesDir, "mms_attachments")
+            if (!dir.exists()) dir.mkdirs()
+            val safeName = (filename ?: "part").replace("/", "_")
+            val outFile = java.io.File(dir, safeName)
+            cr.openInputStream(uri)?.use { input ->
+                outFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            outFile.absolutePath
+        } catch (t: Throwable) {
+            AppLogger.w("saveAttachmentToFiles failed: ${t.message}")
+            null
+        }
+    }
+
+    // Build a transport-friendly DTO for sync (base64 for binary parts)
+    fun toSyncDto(entity: net.melisma.relay.db.MessageWithParts): net.melisma.relay.SyncMessageDTO {
+        val message = entity.message
+        val parts = entity.parts.map { p ->
+            val base64 = p.data?.let { Base64.getEncoder().encodeToString(it) }
+            net.melisma.relay.SyncPartDTO(
+                partId = p.partId,
+                contentType = p.ct,
+                filename = p.fn ?: p.name,
+                text = p.text,
+                base64Data = base64
+            )
+        }
+        return net.melisma.relay.SyncMessageDTO(
+            id = message.id,
+            kind = message.kind,
+            providerId = message.providerId,
+            threadId = message.threadId,
+            address = message.address,
+            body = message.body,
+            timestamp = message.timestamp,
+            dateSent = message.dateSent,
+            read = message.read,
+            subject = message.subject,
+            mmsContentType = message.mmsContentType,
+            msgBox = message.msgBox,
+            status = message.status,
+            serviceCenter = message.serviceCenter,
+            protocol = message.protocol,
+            seen = message.seen,
+            locked = message.locked,
+            errorCode = message.errorCode,
+            parts = parts
+        )
     }
 
     private fun toRawJson(item: net.melisma.relay.SmsItem): String {

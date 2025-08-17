@@ -52,14 +52,14 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
   - `mms_parts` (Room entity `MmsPartEntity`)
     - `partId` TEXT PRIMARY KEY, `messageId` TEXT (FK)
     - `seq` INTEGER NULL, `ct` TEXT NULL, `text` TEXT NULL
-    - `data` BLOB NULL (full image bytes for image parts; used directly for small previews)
-    - `dataPath` TEXT NULL, `cd` TEXT NULL, `fn` TEXT NULL
+    - `data` BLOB NULL (legacy; new ingests prefer files on disk)
+    - `dataPath` TEXT NULL (absolute local file path for attachments), `cd` TEXT NULL, `fn` TEXT NULL
     - `name` TEXT NULL, `chset` TEXT NULL, `cid` TEXT NULL, `cl` TEXT NULL, `cttS` TEXT NULL, `cttT` TEXT NULL
     - `isImage` INTEGER NULL (0/1)
   - `mms_addr` (Room entity `MmsAddrEntity`, planned ingestion)
     - `rowId` INTEGER PK, `messageId` TEXT (FK), `address` TEXT NULL, `type` INTEGER NULL, `charset` TEXT NULL
     - All rows from `content://mms/<id>/addr` are persisted for each MMS
-- UI observes a transactional relation (`@Transaction` `observeMessagesWithParts()`) via `MessageRepository.observeMessagesWithParts()` and renders small image previews from stored bytes
+- UI observes a transactional relation (`@Transaction` `observeMessagesWithParts()`) via `MessageRepository.observeMessagesWithParts()`. Image previews should read from `dataPath` when present; blob `data` remains for legacy rows only.
 - MMS detailed metadata scan is performed once per ingest pass and reused for all new MMS rows
 - Deduplication via `messages.id` primary key (content-based hash)
 - MMS timestamps (seconds) normalized to ms for unified ordering in the repository
@@ -141,6 +141,8 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 - Ingestion concurrency guard via `AtomicBoolean` to prevent overlapping runs.
 - MMS parts/addresses are fetched on-demand per new MMS instead of bulk-prefetching to reduce UI update latency.
 - Broadcast receivers use `goAsync()` combined with `RelayApp.applicationScope` to ensure work completes even if `onReceive` returns; the scope is a `SupervisorJob` on `Dispatchers.IO` to avoid per-intent scope creation and to isolate failures.
+- `MmsReceiver` defers ingest by enqueuing one-time `MessageSyncWorker` work (tagged) instead of performing DB writes inline.
+- Transport DTOs (`SyncMessageDTO`/`SyncPartDTO`) provide base64-encoded payloads for binary parts during sync only; local storage remains as files.
 - RCS timestamps are normalized to ms; Samsung provider timestamps are used rather than `System.currentTimeMillis()`. Access to Samsung RCS provider is guarded by `ImProviderGate` which detects once per install and permanently disables queries/observers if unavailable.
 - Room destructive migrations allowed during pre-release via `fallbackToDestructiveMigration(true)`.
 

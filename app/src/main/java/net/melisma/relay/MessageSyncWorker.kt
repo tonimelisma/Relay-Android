@@ -3,6 +3,7 @@ package net.melisma.relay
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -33,6 +34,7 @@ class MessageSyncWorker(appContext: Context, params: WorkerParameters) : Corouti
 
     companion object {
         const val UNIQUE_WORK_NAME = "message-sync-worker"
+        const val TAG_IMMEDIATE = "immediate-message-sync"
 
         fun schedule(appContext: Context) {
             val request = PeriodicWorkRequestBuilder<MessageSyncWorker>(15, TimeUnit.MINUTES)
@@ -44,6 +46,14 @@ class MessageSyncWorker(appContext: Context, params: WorkerParameters) : Corouti
                     request
                 )
             AppLogger.i("Scheduled MessageSyncWorker every ~15 minutes @${System.currentTimeMillis()}")
+        }
+
+        fun enqueueOneTime(appContext: Context) {
+            val request = OneTimeWorkRequestBuilder<MessageSyncWorker>()
+                .addTag(TAG_IMMEDIATE)
+                .build()
+            WorkManager.getInstance(appContext).enqueue(request)
+            AppLogger.i("Enqueued one-time MessageSyncWorker @${System.currentTimeMillis()}")
         }
     }
 }

@@ -110,3 +110,12 @@
   - `MessageDaoFlowTest` verifies empty→populated emissions and MMS parts join
   - `MessageRepositoryFlowTest` verifies repository propagates DAO Flow
 - All tests green
+
+## 0.8.0 - MMS ingestion revamp: parts, SMIL, file-based attachments, DTO base64, and receiver→WorkManager handoff
+
+- Models: introduced `MessagePart`, `MessagePartType`, `MessageAddress`, `SmilPresentation/Slide/Item`, and `SmilLayout`; `SmsItem` now includes `addresses`, `parts`, and optional `smilLayout`
+- Scanner: resolves MMS parts with type/size/cid/cl, copies attachments to `filesDir/mms_attachments`, maps addresses (From/To/Cc/Bcc), and builds `smilLayout` by correlating SMIL to parts
+- Repository: persists attachment file paths in `mms_parts.dataPath` (no blob storage for new ingests); keeps text parts in `text`; falls back to meta scan when needed
+- Transport: added `SyncMessageDTO`/`SyncPartDTO`; repository provides `toSyncDto(...)` that base64-encodes binary data for sync payloads while keeping local storage as files
+- Receiver: `MmsReceiver` now enqueues one-time WorkManager sync on WAP_PUSH (immediate tag) instead of doing DB work inline
+- Tests: added SMIL parser test and DTO base64 encoding test; full suite green
