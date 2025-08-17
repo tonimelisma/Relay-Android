@@ -205,6 +205,7 @@ Basic but clean UX with minimal configuration options.
 | 2     | Receive & display SMS            | 1 day           |
 | 3     | Load SMS inbox history           | 0.5 day         |
 | 4     | Local persistence                | 1 day           |
+| 4.1   | Incremental ingest + Flow tests  | 0.5 day        |
 | 5     | Upload to cloud backend          | 1–2 days        |
 | 6     | Sync state & bulk upload         | 1 day           |
 | 7     | Settings & UI polish             | 1 day           |
@@ -213,7 +214,7 @@ Basic but clean UX with minimal configuration options.
 
 ## ✅ Summary
 
-This PRD breaks the app into self-contained phases with increasing functionality. You can ship early, test often, and refactor later without overcommitting to architecture from day one.
+This PRD breaks the app into self-contained phases with increasing functionality. You can ship early, test often, and refactor later without overcommitting to architecture from day one. Flow-level assertions have been added to validate DAO/repository reactivity in Phase 4.1.
 
 
 

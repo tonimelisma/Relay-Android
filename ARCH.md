@@ -179,9 +179,9 @@ The app will be tested across multiple layers to ensure correctness, stability, 
 
 | Component           | What to Test                                  | Tools/Frameworks       |
 |---------------------|-----------------------------------------------|------------------------|
-| Room DB             | Insert, query, and deduplication logic        | JUnit, Room in-memory DB |
+| Room DB             | Insert, query, Flow emissions, relations      | JUnit, Room in-memory DB |
 | Hash Generator      | Correct SHA-256 generation from SMS content   | JUnit, Mockito         |
-| ViewModel Logic     | State updates, permission flows               | JUnit, LiveData Test Rules / Turbine (for Flow) |
+| ViewModel Logic     | State updates, Flow propagation               | JUnit, kotlinx-coroutines-test |
 | SmsUploadWorker     | Success/failure handling, retry logic         | WorkManager test APIs  |
 | SharedPreferences   | Settings toggles and default values           | JUnit                  |
 

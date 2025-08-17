@@ -103,3 +103,10 @@
 - `SmsReceiver` and `MmsReceiver` now use `applicationScope` with `goAsync()` to run DB ingest, avoiding per-receive scope creation
 - `MessageScanner` gained a generic `queryProvider` helper to reduce boilerplate and refactored `scanSms` to use it
 - Build and tests pass; minor Robolectric stderr from async receivers remains non-fatal
+
+## 0.7.4 - Flow assertions for DAO/Repository
+
+- Added unit tests to assert Room Flow behavior:
+  - `MessageDaoFlowTest` verifies empty→populated emissions and MMS parts join
+  - `MessageRepositoryFlowTest` verifies repository propagates DAO Flow
+- All tests green
