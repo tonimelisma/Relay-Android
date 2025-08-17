@@ -11,6 +11,7 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 - SMS is received via a manifest-declared `BroadcastReceiver` (`SmsReceiver`).
 - MMS notifications are received via WAP push (`MmsReceiver`, `application/vnd.wap.mms-message`). Provider scans read MMS text parts (`content://mms/part`) and sender (`content://mms/<id>/addr`). RCS is heuristic via MMS DB content types and optional `content://im/chat` where available, gated by a persisted one-time IM provider availability check (`ImProviderGate`).
 - Receivers trigger repository ingest on a background thread and persist directly into Room (no in-memory intermediary).
+ - Receivers trigger repository ingest on a background thread via a centralized application-level coroutine scope and persist directly into Room (no in-memory intermediary).
 - Messages are stored in a local Room database mirroring provider fields with MMS parts/addresses.
 - Foreground change detection via content observers on `content://sms` and `content://mms` and, if enabled by `ImProviderGate`, best-effort `content://im/chat` for RCS. Manual scan and foreground polling were removed.
 - Background periodic ingest via WorkManager (~15 min) catches missed broadcasts and RCS. Scheduled after boot via `BootReceiver`; `MainActivity` onStart() verifies health and reschedules only if missing/cancelled.
@@ -139,6 +140,7 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 
 - Ingestion concurrency guard via `AtomicBoolean` to prevent overlapping runs.
 - MMS parts/addresses are fetched on-demand per new MMS instead of bulk-prefetching to reduce UI update latency.
+- Broadcast receivers use `goAsync()` combined with `RelayApp.applicationScope` to ensure work completes even if `onReceive` returns; the scope is a `SupervisorJob` on `Dispatchers.IO` to avoid per-intent scope creation and to isolate failures.
 - RCS timestamps are normalized to ms; Samsung provider timestamps are used rather than `System.currentTimeMillis()`. Access to Samsung RCS provider is guarded by `ImProviderGate` which detects once per install and permanently disables queries/observers if unavailable.
 - Room destructive migrations allowed during pre-release via `fallbackToDestructiveMigration(true)`.
 

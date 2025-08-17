@@ -5,28 +5,39 @@ import android.net.Uri
 import android.provider.Telephony
 
 object MessageScanner {
+    private fun <T> queryProvider(
+        contentResolver: ContentResolver,
+        uri: Uri,
+        projection: Array<String>,
+        selection: String?,
+        selectionArgs: Array<String>?,
+        sortOrder: String,
+        mapper: (android.database.Cursor) -> T
+    ): List<T> {
+        val results = mutableListOf<T>()
+        try {
+            contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    results.add(mapper(cursor))
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.e("Failed to query provider for uri: $uri", e)
+        }
+        return results
+    }
     fun scanSms(
         contentResolver: ContentResolver,
         minProviderIdExclusive: Long? = null,
         limit: Int? = null
     ): List<SmsItem> {
-        val results = mutableListOf<SmsItem>()
         AppLogger.d("MessageScanner.scanSms start")
         val projection = arrayOf(
-            Telephony.Sms._ID,
-            Telephony.Sms.THREAD_ID,
-            Telephony.Sms.ADDRESS,
-            Telephony.Sms.BODY,
-            Telephony.Sms.DATE,
-            Telephony.Sms.DATE_SENT,
-            Telephony.Sms.READ,
-            Telephony.Sms.TYPE,
-            Telephony.Sms.STATUS,
-            Telephony.Sms.SERVICE_CENTER,
-            Telephony.Sms.PROTOCOL,
-            Telephony.Sms.SEEN,
-            Telephony.Sms.LOCKED,
-            Telephony.Sms.ERROR_CODE
+            Telephony.Sms._ID, Telephony.Sms.THREAD_ID, Telephony.Sms.ADDRESS,
+            Telephony.Sms.BODY, Telephony.Sms.DATE, Telephony.Sms.DATE_SENT,
+            Telephony.Sms.READ, Telephony.Sms.TYPE, Telephony.Sms.STATUS,
+            Telephony.Sms.SERVICE_CENTER, Telephony.Sms.PROTOCOL, Telephony.Sms.SEEN,
+            Telephony.Sms.LOCKED, Telephony.Sms.ERROR_CODE
         )
         val selection = if (minProviderIdExclusive != null) "${Telephony.Sms._ID} > ?" else null
         val selectionArgs = if (minProviderIdExclusive != null) arrayOf(minProviderIdExclusive.toString()) else null
@@ -35,14 +46,8 @@ object MessageScanner {
         if (limit != null) {
             uri = uri.buildUpon().appendQueryParameter("limit", limit.toString()).build()
         }
-        val cursor = contentResolver.query(
-            uri,
-            projection,
-            selection,
-            selectionArgs,
-            sort
-        )
-        cursor?.use { c ->
+
+        val smsList = queryProvider(contentResolver, uri, projection, selection, selectionArgs, sort) { c ->
             val idCol = c.getColumnIndex(Telephony.Sms._ID)
             val threadCol = c.getColumnIndex(Telephony.Sms.THREAD_ID)
             val addrCol = c.getColumnIndex(Telephony.Sms.ADDRESS)
@@ -57,41 +62,28 @@ object MessageScanner {
             val seenCol = c.getColumnIndex(Telephony.Sms.SEEN)
             val lockedCol = c.getColumnIndex(Telephony.Sms.LOCKED)
             val errCol = c.getColumnIndex(Telephony.Sms.ERROR_CODE)
-            var count = 0
-            while (c.moveToNext()) {
-                val rowId = if (idCol >= 0) c.getLong(idCol) else null
-                val threadId = if (threadCol >= 0) c.getLong(threadCol) else null
-                val sender = if (addrCol >= 0) c.getString(addrCol) else null
-                val body = if (bodyCol >= 0) c.getString(bodyCol) else null
-                val ts = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
-                val dateSent = if (dateSentCol >= 0) c.getLong(dateSentCol) else null
-                val read = if (readCol >= 0) c.getInt(readCol) else null
-                results.add(
-                    SmsItem(
-                        sender = sender ?: "<sms>",
-                        body = body ?: "",
-                        timestamp = ts,
-                        kind = MessageKind.SMS,
-                        providerId = rowId,
-                        threadId = threadId,
-                        read = read,
-                        dateSent = dateSent,
-                        msgBox = if (typeCol >= 0) c.getInt(typeCol) else null,
-                        smsType = if (typeCol >= 0) c.getInt(typeCol) else null,
-                        status = if (statusCol >= 0) c.getInt(statusCol) else null,
-                        serviceCenter = if (scCol >= 0) c.getString(scCol) else null,
-                        protocol = if (protoCol >= 0) c.getInt(protoCol) else null,
-                        seen = if (seenCol >= 0) c.getInt(seenCol) else null,
-                        locked = if (lockedCol >= 0) c.getInt(lockedCol) else null,
-                        errorCode = if (errCol >= 0) c.getInt(errCol) else null
-                    )
-                )
-                count++
-                if (limit != null && count >= limit) break
-            }
+
+            SmsItem(
+                sender = c.getString(addrCol) ?: "<sms>",
+                body = c.getString(bodyCol) ?: "",
+                timestamp = c.getLong(dateCol),
+                kind = MessageKind.SMS,
+                providerId = c.getLong(idCol),
+                threadId = c.getLong(threadCol),
+                read = c.getInt(readCol),
+                dateSent = c.getLong(dateSentCol),
+                msgBox = c.getInt(typeCol),
+                smsType = c.getInt(typeCol),
+                status = c.getInt(statusCol),
+                serviceCenter = c.getString(scCol),
+                protocol = c.getInt(protoCol),
+                seen = c.getInt(seenCol),
+                locked = c.getInt(lockedCol),
+                errorCode = c.getInt(errCol)
+            )
         }
-        AppLogger.i("MessageScanner.scanSms done count=${results.size}")
-        return results
+        AppLogger.i("MessageScanner.scanSms done count=${smsList.size}")
+        return smsList
     }
     fun scanMms(
         contentResolver: ContentResolver,

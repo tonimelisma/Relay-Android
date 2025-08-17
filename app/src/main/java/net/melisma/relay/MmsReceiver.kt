@@ -4,8 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import net.melisma.relay.data.MessageRepository
 import net.melisma.relay.db.AppDatabase
@@ -19,7 +17,8 @@ class MmsReceiver : BroadcastReceiver() {
             type == "application/vnd.wap.mms-message") {
             AppLogger.i("MmsReceiver received WAP_PUSH → trigger DB ingest for MMS")
             val pending = goAsync()
-            CoroutineScope(Dispatchers.IO).launch {
+            val scope = (context.applicationContext as RelayApp).applicationScope
+            scope.launch {
                 try {
                     val db = AppDatabase.getInstance(context)
                     val repo = MessageRepository(db.messageDao())

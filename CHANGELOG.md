@@ -96,3 +96,10 @@
 - `RelayApp` primes the gate on startup; `MainActivity` registers `content://im/chat` observer only if enabled; `MessageScanner` queries Samsung provider only when gate allows
 - On observer registration or query failures, the gate is permanently marked unavailable to prevent future attempts on that install
 - Unit tests: broadened suite; receivers tests adjusted to avoid pending-result NPE logs; build/tests passing
+
+## 0.7.3 - Centralized coroutine scope + MessageScanner refactor
+
+- Added application-level `CoroutineScope` in `RelayApp` using `SupervisorJob()+Dispatchers.IO` for background work
+- `SmsReceiver` and `MmsReceiver` now use `applicationScope` with `goAsync()` to run DB ingest, avoiding per-receive scope creation
+- `MessageScanner` gained a generic `queryProvider` helper to reduce boilerplate and refactored `scanSms` to use it
+- Build and tests pass; minor Robolectric stderr from async receivers remains non-fatal
