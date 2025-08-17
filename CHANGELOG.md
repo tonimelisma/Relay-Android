@@ -89,3 +89,10 @@
 - UI (`MainActivity`) displays "Last synced:" from `lastSyncSuccessTs`
 - Removed redundant periodic worker scheduling in `MainActivity.onCreate` to avoid WorkManager churn; rely on `BootReceiver` and an onStart() health check
 - Switched to watermark-based, chunked syncing of all SMS and MMS folders using provider `_id` with ascending queries; eliminates 50/25 caps and avoids missed bursts
+
+## 0.7.2 - Persisted IM provider gate (Samsung RCS) and tests
+
+- Added `ImProviderGate` to detect Samsung IM provider availability once per install and persist the result in `SharedPreferences`
+- `RelayApp` primes the gate on startup; `MainActivity` registers `content://im/chat` observer only if enabled; `MessageScanner` queries Samsung provider only when gate allows
+- On observer registration or query failures, the gate is permanently marked unavailable to prevent future attempts on that install
+- Unit tests: broadened suite; receivers tests adjusted to avoid pending-result NPE logs; build/tests passing

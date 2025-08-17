@@ -9,10 +9,10 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 ## 🧱 High-Level Architecture Summary
 
 - SMS is received via a manifest-declared `BroadcastReceiver` (`SmsReceiver`).
-- MMS notifications are received via WAP push (`MmsReceiver`, `application/vnd.wap.mms-message`). Provider scans read MMS text parts (`content://mms/part`) and sender (`content://mms/<id>/addr`). RCS is heuristic via MMS DB content types and optional `content://im/chat` where available.
+- MMS notifications are received via WAP push (`MmsReceiver`, `application/vnd.wap.mms-message`). Provider scans read MMS text parts (`content://mms/part`) and sender (`content://mms/<id>/addr`). RCS is heuristic via MMS DB content types and optional `content://im/chat` where available, gated by a persisted one-time IM provider availability check (`ImProviderGate`).
 - Receivers trigger repository ingest on a background thread and persist directly into Room (no in-memory intermediary).
 - Messages are stored in a local Room database mirroring provider fields with MMS parts/addresses.
-- Foreground change detection via content observers on `content://sms` and `content://mms` (and best-effort `content://im/chat` for RCS). Manual scan and foreground polling were removed.
+- Foreground change detection via content observers on `content://sms` and `content://mms` and, if enabled by `ImProviderGate`, best-effort `content://im/chat` for RCS. Manual scan and foreground polling were removed.
 - Background periodic ingest via WorkManager (~15 min) catches missed broadcasts and RCS. Scheduled after boot via `BootReceiver`; `MainActivity` onStart() verifies health and reschedules only if missing/cancelled.
 - A background WorkManager job will upload unsynced messages (Phase 5+)
 - The UI observes the local DB and reflects changes; no manual refresh button. The UI also surfaces a "Last synced" label read from `SharedPreferences` (`lastSyncSuccessTs`) updated by `MessageSyncWorker` on success.
@@ -67,7 +67,7 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 ### Incremental Ingest & Permissions Gate
 
 - On first run per kind, perform a full scan. Then incremental ingest filters by provider id per kind (new rows have `providerId > lastSeen`) using ascending, chunked `_id` queries to cover all folders (not just inbox) without arbitrary caps. Inserts are batched transactionally to minimize UI emissions and memory usage.
-- Ingest runs automatically at app start (when permissions are granted). Content observers on `content://sms`, `content://mms`, and best-effort `content://im/chat` trigger ingest on changes while the app is foregrounded. The previous foreground polling loop (~10s) and manual scan button were removed.
+- Ingest runs automatically at app start (when permissions are granted). Content observers on `content://sms`, `content://mms`, and (if allowed by `ImProviderGate`) `content://im/chat` trigger ingest on changes while the app is foregrounded. The previous foreground polling loop (~10s) and manual scan button were removed.
 - WorkManager performs periodic ingest in the background to catch missed broadcasts and all RCS.
 - Permissions gate: if required permissions (READ_SMS, RECEIVE_SMS, RECEIVE_MMS, RECEIVE_WAP_PUSH) are missing, the UI renders only the explanation + request flow; list is hidden until all are granted.
 - A simple concurrency guard ensures only one ingest runs at a time.
@@ -139,7 +139,7 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 
 - Ingestion concurrency guard via `AtomicBoolean` to prevent overlapping runs.
 - MMS parts/addresses are fetched on-demand per new MMS instead of bulk-prefetching to reduce UI update latency.
-- RCS timestamps are normalized to ms; Samsung provider timestamps are used rather than `System.currentTimeMillis()`.
+- RCS timestamps are normalized to ms; Samsung provider timestamps are used rather than `System.currentTimeMillis()`. Access to Samsung RCS provider is guarded by `ImProviderGate` which detects once per install and permanently disables queries/observers if unavailable.
 - Room destructive migrations allowed during pre-release via `fallbackToDestructiveMigration(true)`.
 
 ---

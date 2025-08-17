@@ -9,6 +9,8 @@ class RelayApp : Application() {
     override fun onCreate() {
         super.onCreate()
         AppLogger.init(this)
+        // Prime IM provider availability cache once per process start
+        ImProviderGate.prime(this)
         logHistoricalExitReasons()
     }
 

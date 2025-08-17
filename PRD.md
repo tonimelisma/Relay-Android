@@ -47,7 +47,7 @@ App requests permissions and displays the result. Implemented in `MainActivity` 
 - Parse sender + body from each received message
 - Append message to an in-app list (RecyclerView or simple list)
 - Register a `BroadcastReceiver` for MMS notifications (`WAP_PUSH_RECEIVED` with `application/vnd.wap.mms-message`) and surface a minimal entry
-- Heuristic RCS surfaced via MMS DB content types and best-effort `content://im/chat` where accessible
+- Heuristic RCS surfaced via MMS DB content types and best-effort `content://im/chat` where accessible, guarded by a one-time per-install IM provider availability gate (`ImProviderGate`).
 
 **Deliverable:**  
 SMS and MMS notifications are persisted directly into Room via receivers triggering repository ingest on a background thread. UI observes changes reactively via ViewModel.
@@ -124,7 +124,7 @@ App shows historical and live messages together.
 - Implement ingest that performs an initial full scan per kind (when no prior items exist), then incrementally queries new items by provider id per kind using ascending `_id` with chunked queries to avoid caps and ensure completeness across all folders
 - Run ingest automatically on app start (if permissions are granted); centralized in `MainViewModel`
 - Receivers trigger ingest on new events so UI updates promptly from Room
-- Add content observers on `content://sms` and `content://mms` (and best-effort RCS provider) to react to provider changes while app is foregrounded
+- Add content observers on `content://sms` and `content://mms` (and best-effort RCS provider only if enabled by `ImProviderGate`) to react to provider changes while app is foregrounded
 - Remove foreground periodic polling (10s loop) and remove manual scan button
 - Add background periodic sync using WorkManager approximately every 15 minutes to catch missed broadcasts and all RCS
 - Schedule the periodic sync after device boot via a `BootReceiver`; on app foreground (`onStart`) verify and reschedule only if missing/cancelled

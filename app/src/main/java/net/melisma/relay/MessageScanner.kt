@@ -379,37 +379,39 @@ object MessageScanner {
                 }
             }
         }
-        // Attempt Samsung proprietary provider
-        try {
-            val uri: Uri = Uri.parse("content://im/chat")
-            contentResolver.query(uri, null, null, null, "date DESC")?.use { c ->
-                val bodyCol = c.getColumnIndex("body")
-                val addrCol = c.getColumnIndex("address")
-                val dateCol = c.getColumnIndex("date")
-                val idCol = c.getColumnIndex("_id")
-                var count = 0
-                while (c.moveToNext() && count < limit) {
-                    val body = if (bodyCol >= 0) c.getString(bodyCol) else null
-                    val addr = if (addrCol >= 0) c.getString(addrCol) else null
-                    val tsRaw = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
-                    val ts = if (tsRaw < 10_000_000_000L) tsRaw * 1000 else tsRaw
-                    val pid = if (idCol >= 0) c.getLong(idCol) else null
-                    if (!body.isNullOrBlank()) {
-                        results.add(
-                            SmsItem(
-                                sender = addr ?: "<rcs>",
-                                body = body,
-                                timestamp = ts,
-                                kind = MessageKind.RCS,
-                                providerId = pid
+        // Attempt Samsung proprietary provider if gate allows
+        if (ImProviderGate.shouldUseImOrCachedFalse()) {
+            try {
+                val uri: Uri = Uri.parse("content://im/chat")
+                contentResolver.query(uri, null, null, null, "date DESC")?.use { c ->
+                    val bodyCol = c.getColumnIndex("body")
+                    val addrCol = c.getColumnIndex("address")
+                    val dateCol = c.getColumnIndex("date")
+                    val idCol = c.getColumnIndex("_id")
+                    var count = 0
+                    while (c.moveToNext() && count < limit) {
+                        val body = if (bodyCol >= 0) c.getString(bodyCol) else null
+                        val addr = if (addrCol >= 0) c.getString(addrCol) else null
+                        val tsRaw = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
+                        val ts = if (tsRaw < 10_000_000_000L) tsRaw * 1000 else tsRaw
+                        val pid = if (idCol >= 0) c.getLong(idCol) else null
+                        if (!body.isNullOrBlank()) {
+                            results.add(
+                                SmsItem(
+                                    sender = addr ?: "<rcs>",
+                                    body = body,
+                                    timestamp = ts,
+                                    kind = MessageKind.RCS,
+                                    providerId = pid
+                                )
                             )
-                        )
-                        count++
+                            count++
+                        }
                     }
                 }
+            } catch (t: Throwable) {
+                AppLogger.w("MessageScanner.scanRcsHeuristics samsung provider not accessible: ${t.message}")
             }
-        } catch (t: Throwable) {
-            AppLogger.w("MessageScanner.scanRcsHeuristics samsung provider not accessible: ${t.message}")
         }
         AppLogger.i("MessageScanner.scanRcsHeuristics done count=${results.size}")
         return results

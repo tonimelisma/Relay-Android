@@ -218,7 +218,7 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
                                     scope.launch { viewModel.ingestFromProviders() }
                                 }
                             }
-                            // Best-effort: observe Samsung RCS if accessible
+                            // Best-effort: observe Samsung RCS if accessible and allowed by gate
                             val rcsObserver = object : ContentObserver(handler) {
                                 override fun onChange(selfChange: Boolean, uri: Uri?) {
                                     AppLogger.d("ContentObserver RCS changed uri=$uri ts=${System.currentTimeMillis()}")
@@ -228,10 +228,15 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
                             try {
                                 cr.registerContentObserver(android.provider.Telephony.Sms.CONTENT_URI, true, smsObserver)
                                 cr.registerContentObserver(android.provider.Telephony.Mms.CONTENT_URI, true, mmsObserver)
-                                try {
-                                    cr.registerContentObserver(Uri.parse("content://im/chat"), true, rcsObserver)
-                                } catch (t: Throwable) {
-                                    AppLogger.w("RCS content observer registration failed: ${t.message}")
+                                if (ImProviderGate.shouldUseIm(context.applicationContext)) {
+                                    try {
+                                        cr.registerContentObserver(Uri.parse("content://im/chat"), true, rcsObserver)
+                                    } catch (t: Throwable) {
+                                        AppLogger.w("RCS content observer registration failed: ${t.message}")
+                                        ImProviderGate.markUnavailable(context.applicationContext)
+                                    }
+                                } else {
+                                    AppLogger.w("RCS observer skipped: IM provider gate is disabled")
                                 }
                                 AppLogger.i("Registered content observers for SMS/MMS/RCS where available")
                             } catch (t: Throwable) {
