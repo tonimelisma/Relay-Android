@@ -30,6 +30,7 @@ class MessageRepositoryJsonTest {
         override suspend fun insertAddrs(addrs: List<MmsAddrEntity>) {}
         override fun observeMessages(): Flow<List<MessageEntity>> = emptyFlow()
         override fun observeMessagesWithParts(): Flow<List<MessageWithParts>> = emptyFlow()
+        override fun observeMessagesWithPartsAndAddrs(): Flow<List<net.melisma.relay.db.MessageWithPartsAndAddrs>> = emptyFlow()
         override suspend fun clearAll() {}
         override suspend fun getMaxTimestampForKind(kind: String): Long? = null
         override suspend fun getMaxProviderIdForKind(kind: String): Long? = null

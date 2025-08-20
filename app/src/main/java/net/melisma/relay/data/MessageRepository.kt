@@ -2,12 +2,17 @@ package net.melisma.relay.data
 
 import android.content.ContentResolver
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.melisma.relay.MessageKind
 import net.melisma.relay.AppLogger
 import net.melisma.relay.MessageScanner
 import net.melisma.relay.MessagePart
+import net.melisma.relay.MessagePartType
+import net.melisma.relay.MessageAddress
+import net.melisma.relay.toEntity
+import net.melisma.relay.toDomain
 import net.melisma.relay.db.MessageDao
 import net.melisma.relay.db.MessageEntity
 import net.melisma.relay.db.MmsPartEntity
@@ -24,6 +29,12 @@ class MessageRepository(private val dao: MessageDao) {
     }
     fun observeMessages() = dao.observeMessages()
     fun observeMessagesWithParts(): Flow<List<MessageWithParts>> = dao.observeMessagesWithParts()
+    
+    fun observeDomainMessages(): Flow<List<net.melisma.relay.SmsItem>> {
+        return dao.observeMessagesWithPartsAndAddrs().map { entities ->
+            entities.map { it.toDomain() }
+        }
+    }
 
     suspend fun ingestFromProviders(cr: ContentResolver, kind: MessageKind? = null) = withContext(Dispatchers.IO) {
         if (!ingestInFlight.compareAndSet(false, true)) {
@@ -130,56 +141,50 @@ class MessageRepository(private val dao: MessageDao) {
                     // Prefer SmsItem.parts when provided; fallback to meta scan
                     val partsFromItem = item.parts
                     val partEntities = if (partsFromItem.isNotEmpty()) {
-                        partsFromItem.mapNotNull { p ->
-                            val isImage = p.contentType?.startsWith("image/") == true
-                            val storedPath = if (p.isAttachment) p.localUriPath else null
-                            val textValue = if (!p.isAttachment) p.text else null
-                            MmsPartEntity(
-                                partId = p.partId.toString(),
-                                messageId = id,
-                                seq = null,
-                                ct = p.contentType,
-                                text = textValue,
-                                data = null, // store as file instead of blob
-                                dataPath = storedPath,
-                                name = p.filename,
-                                chset = null,
-                                cid = null,
-                                cl = null,
-                                cttS = null,
-                                cttT = null,
-                                cd = null,
-                                fn = p.filename,
-                                isImage = isImage
-                            )
-                        }
+                        partsFromItem.map { p -> p.toEntity(id) }
                     } else {
                         val partsMeta = MessageScanner.scanMmsPartsMetaFor(cr, pid)
-                        partsMeta.mapNotNull { meta ->
+                        partsMeta.map { meta ->
                             val isImage = meta.ct?.startsWith("image/") == true
-                            val storedPath = if (isImage || (meta.ct != null && !meta.ct.startsWith("text/"))) {
+                            val isAttachment = meta.ct != null && !meta.ct.startsWith("text/") && meta.ct != "application/smil"
+                            val storedPath = if (isAttachment) {
                                 val contentUri = "content://mms/part/${meta.partId}"
                                 saveAttachmentToFiles(cr, contentUri, meta.fn ?: meta.name)
                             } else null
-                            val textValue = if (!isImage && meta.ct?.startsWith("text/") == true) meta.text else null
-                            MmsPartEntity(
-                                partId = meta.partId.toString(),
-                                messageId = id,
+                            val textValue = if (!isAttachment) meta.text else null
+                            
+                            // Create a MessagePart and convert to entity
+                            val type = when {
+                                meta.ct == null -> MessagePartType.OTHER
+                                meta.ct.startsWith("image/") -> MessagePartType.IMAGE
+                                meta.ct.startsWith("video/") -> MessagePartType.VIDEO
+                                meta.ct.startsWith("audio/") -> MessagePartType.AUDIO
+                                meta.ct.equals("text/vcard", ignoreCase = true) || meta.ct.equals("text/x-vcard", ignoreCase = true) -> MessagePartType.VCARD
+                                meta.ct.startsWith("text/") -> MessagePartType.TEXT
+                                else -> MessagePartType.OTHER
+                            }
+                            
+                            MessagePart(
+                                partId = meta.partId,
+                                messageId = pid,
                                 seq = meta.seq,
-                                ct = meta.ct,
+                                contentType = meta.ct,
                                 text = textValue,
                                 data = null,
                                 dataPath = storedPath ?: meta.dataPath,
                                 name = meta.name,
-                                chset = meta.chset,
-                                cid = meta.cid,
-                                cl = meta.cl,
-                                cttS = meta.cttS,
-                                cttT = meta.cttT,
-                                cd = meta.cd,
-                                fn = meta.fn,
-                                isImage = isImage
-                            )
+                                charset = meta.chset,
+                                contentId = meta.cid,
+                                contentLocation = meta.cl,
+                                contentTransferSize = meta.cttS,
+                                contentTransferType = meta.cttT,
+                                contentDisposition = meta.cd,
+                                filename = meta.fn,
+                                isImage = isImage,
+                                type = type,
+                                isAttachment = isAttachment,
+                                size = null
+                            ).toEntity(id)
                         }
                     }
                     partEntitiesAll.addAll(partEntities)
@@ -189,14 +194,20 @@ class MessageRepository(private val dao: MessageDao) {
                         val tAddrStart = System.currentTimeMillis()
                         val addrs = MessageScanner.scanMmsAddrs(cr, pid)
                         addrs.forEach { ar ->
-                            addrEntitiesAll.add(
-                                MmsAddrEntity(
-                                    messageId = id,
-                                    address = ar.address,
-                                    type = ar.type,
-                                    charset = ar.charset
-                                )
-                            )
+                            ar.address?.let { address ->
+                                val typeString = when (ar.type) {
+                                    137 -> "From"
+                                    151 -> "To"
+                                    130 -> "Cc"
+                                    129 -> "Bcc"
+                                    else -> null
+                                }
+                                typeString?.let { type ->
+                                    addrEntitiesAll.add(
+                                        MessageAddress(address, type).toEntity(id)
+                                    )
+                                }
+                            }
                         }
                         AppLogger.d("Ingest addrs for mmsId=$pid count=${addrs.size} took=${System.currentTimeMillis() - tAddrStart}ms")
                     }

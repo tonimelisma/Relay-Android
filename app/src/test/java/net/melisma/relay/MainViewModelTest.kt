@@ -22,12 +22,14 @@ import org.junit.Test
 
 private class FakeDao : MessageDao {
     private val state = MutableStateFlow<List<MessageWithParts>>(emptyList())
+    private val stateWithAddrs = MutableStateFlow<List<net.melisma.relay.db.MessageWithPartsAndAddrs>>(emptyList())
     override suspend fun insertMessage(message: MessageEntity) {}
     override suspend fun insertMessages(messages: List<MessageEntity>) {}
     override suspend fun insertParts(parts: List<MmsPartEntity>) {}
     override suspend fun insertAddrs(addrs: List<MmsAddrEntity>) {}
     override fun observeMessages(): Flow<List<MessageEntity>> = MutableStateFlow(emptyList())
     override fun observeMessagesWithParts(): Flow<List<MessageWithParts>> = state
+    override fun observeMessagesWithPartsAndAddrs(): Flow<List<net.melisma.relay.db.MessageWithPartsAndAddrs>> = stateWithAddrs
     override suspend fun clearAll() {}
     override suspend fun getMaxTimestampForKind(kind: String): Long? = null
     override suspend fun getMaxProviderIdForKind(kind: String): Long? = null

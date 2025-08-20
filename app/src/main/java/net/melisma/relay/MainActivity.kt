@@ -251,16 +251,15 @@ private fun PermissionsScreen(modifier: Modifier = Modifier) {
         
 
         if (permissionsGranted) {
-            val itemsWithParts by viewModel.messages.collectAsState()
-            LaunchedEffect(itemsWithParts.size) {
-                AppLogger.d("Rendering messages list size=${itemsWithParts.size}")
+            val messages by viewModel.messages.collectAsState()
+            LaunchedEffect(messages.size) {
+                AppLogger.d("Rendering messages list size=${messages.size}")
             }
             LazyColumn {
-                items(itemsWithParts) { row ->
-                    val item = row.message
-                    val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(java.util.Date(item.timestamp))
-                    Text(text = "$ts [${item.kind}] ${item.address ?: ""}: ${item.body ?: ""}")
-                    val imgPart = row.parts.firstOrNull { it.isImage == true && it.data != null }
+                items(messages) { message ->
+                    val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(java.util.Date(message.timestamp))
+                    Text(text = "$ts [${message.kind}] ${message.sender}: ${message.body ?: ""}")
+                    val imgPart = message.parts.firstOrNull { it.type == MessagePartType.IMAGE && it.data != null }
                     if (imgPart != null) {
                         val bmp = remember(imgPart.partId) { BitmapFactory.decodeByteArray(imgPart.data, 0, imgPart.data!!.size) }
                         if (bmp != null) {

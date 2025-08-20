@@ -8,21 +8,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import net.melisma.relay.data.MessageRepository
 import net.melisma.relay.db.AppDatabase
-import net.melisma.relay.db.MessageWithParts
-
 import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val messageRepository: MessageRepository
 
-    val messages: StateFlow<List<MessageWithParts>>
+    val messages: StateFlow<List<SmsItem>>
 
     init {
         val messageDao = AppDatabase.getInstance(application).messageDao()
         messageRepository = MessageRepository(messageDao)
         val t0 = System.currentTimeMillis()
-        messages = messageRepository.observeMessagesWithParts()
+        messages = messageRepository.observeDomainMessages()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
         AppLogger.i("MainViewModel messages flow initialized in ${System.currentTimeMillis() - t0}ms")
         AppLogger.i("MainViewModel initialized; messages flow subscribed")

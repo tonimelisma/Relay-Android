@@ -16,8 +16,9 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 - Foreground change detection via content observers on `content://sms` and `content://mms` and, if enabled by `ImProviderGate`, best-effort `content://im/chat` for RCS. Manual scan and foreground polling were removed.
 - Background periodic ingest via WorkManager (~15 min) catches missed broadcasts and RCS. Scheduled after boot via `BootReceiver`; `MainActivity` onStart() verifies health and reschedules only if missing/cancelled.
 - A background WorkManager job will upload unsynced messages (Phase 5+)
-- The UI observes the local DB and reflects changes; no manual refresh button. The UI also surfaces a "Last synced" label read from `SharedPreferences` (`lastSyncSuccessTs`) updated by `MessageSyncWorker` on success.
+- The UI observes the local DB via domain models and reflects changes; no manual refresh button. The UI also surfaces a "Last synced" label read from `SharedPreferences` (`lastSyncSuccessTs`) updated by `MessageSyncWorker` on success.
 - Messages are deduplicated using a content-based hash.
+- **Entity Conversion Layer**: Extension functions provide seamless conversion between domain models (`MessagePart`, `MessageAddress`) and database entities (`MmsPartEntity`, `MmsAddrEntity`), ensuring data consistency and type safety.
 
 ---
 
@@ -59,7 +60,7 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
   - `mms_addr` (Room entity `MmsAddrEntity`, planned ingestion)
     - `rowId` INTEGER PK, `messageId` TEXT (FK), `address` TEXT NULL, `type` INTEGER NULL, `charset` TEXT NULL
     - All rows from `content://mms/<id>/addr` are persisted for each MMS
-- UI observes a transactional relation (`@Transaction` `observeMessagesWithParts()`) via `MessageRepository.observeMessagesWithParts()`. Image previews should read from `dataPath` when present; blob `data` remains for legacy rows only.
+- UI observes domain models via `MessageRepository.observeDomainMessages()` which uses `@Transaction` `observeMessagesWithPartsAndAddrs()` and converts to `SmsItem` domain objects. Image previews should read from `dataPath` when present; blob `data` remains for legacy rows only.
 - MMS detailed metadata scan is performed once per ingest pass and reused for all new MMS rows
 - Deduplication via `messages.id` primary key (content-based hash)
 - MMS timestamps (seconds) normalized to ms for unified ordering in the repository
@@ -161,7 +162,35 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 
 ## 📊 Data Model
 
-### `SmsMessageEntity` (Room)
+### Unified Domain and Database Models
+
+The app uses a unified data model approach where domain models (`MessagePart`, `MessageAddress`) are designed to be compatible with database entities (`MmsPartEntity`, `MmsAddrEntity`) through extension functions:
+
+```kotlin
+// Domain model with all database fields plus computed properties
+data class MessagePart(
+    val partId: Long,
+    val messageId: Long,
+    val seq: Int? = null,
+    val contentType: String?, // ct in database
+    val text: String?,
+    val data: ByteArray? = null, // Legacy blob storage
+    val dataPath: String? = null, // File path for attachments
+    // ... all database fields ...
+    // Computed properties for convenience
+    val type: MessagePartType = MessagePartType.OTHER,
+    val isAttachment: Boolean = false
+) {
+    fun getBestFilename(): String? = filename ?: name
+    fun getBestFilePath(): String? = dataPath
+}
+
+// Extension functions for seamless conversion
+fun MessagePart.toEntity(messageId: String): MmsPartEntity
+fun MmsPartEntity.toDomain(): MessagePart
+```
+
+### Legacy `SmsMessageEntity` (Room)
 
 ```kotlin
 @Entity(tableName = "sms_messages")

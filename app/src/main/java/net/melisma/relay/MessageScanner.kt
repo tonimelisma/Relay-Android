@@ -137,7 +137,10 @@ object MessageScanner {
                     row.address?.let { addr -> human?.let { MessageAddress(addr, it) } }
                 }
                 val smil = parts.firstOrNull { it.contentType?.equals("application/smil", ignoreCase = true) == true && !it.text.isNullOrBlank() }?.text
-                val smilLayout = smil?.let { buildSmilLayoutFromText(it, parts) }
+                val smilLayout = smil?.let { 
+                    val presentation = parseSmil(it)
+                    presentation.toLayout(parts)
+                }
 
                 val finalBody = when {
                     !textBody.isNullOrBlank() -> textBody
@@ -223,15 +226,23 @@ object MessageScanner {
                         MessagePart(
                             partId = pid,
                             messageId = mmsId,
+                            seq = null,
                             contentType = ct,
-                            localUriPath = localPath,
-                            filename = name ?: fn,
                             text = if (!isAttachment) text else null,
-                            isAttachment = isAttachment,
-                            type = type,
-                            size = size,
+                            data = null,
+                            dataPath = localPath,
+                            name = name,
+                            charset = null,
                             contentId = contentId,
-                            contentLocation = contentLoc
+                            contentLocation = contentLoc,
+                            contentTransferSize = size?.toString(),
+                            contentTransferType = null,
+                            contentDisposition = null,
+                            filename = fn,
+                            isImage = ct?.startsWith("image/") == true,
+                            type = type,
+                            isAttachment = isAttachment,
+                            size = size
                         )
                     )
                 }
@@ -321,23 +332,7 @@ object MessageScanner {
         return SmilPresentation(slides)
     }
 
-    private fun buildSmilLayoutFromText(smilXml: String, parts: List<MessagePart>): SmilLayout? {
-        return try {
-            val pres = parseSmil(smilXml)
-            val byCidOrCl = parts.associateBy { it.contentId ?: it.contentLocation }
-            val order = mutableListOf<Long>()
-            pres.slides.forEach { slide ->
-                slide.items.forEach { item ->
-                    val key = item.src
-                    val matched = if (key != null) byCidOrCl[key] else null
-                    if (matched != null) order.add(matched.partId)
-                }
-            }
-            if (order.isEmpty()) null else SmilLayout(order)
-        } catch (_: Throwable) {
-            null
-        }
-    }
+
 
     data class MmsDetailed(
         val mmsId: Long,

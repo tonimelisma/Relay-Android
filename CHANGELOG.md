@@ -111,6 +111,18 @@
   - `MessageRepositoryFlowTest` verifies repository propagates DAO Flow
 - All tests green
 
+## 0.8.1 - MMS data model unification and entity conversion layer
+
+- **CRITICAL FIX**: Unified `MessagePart` domain model with `MmsPartEntity` database schema to resolve data model inconsistency
+- **Models**: Updated `MessagePart` to include all database fields (`seq`, `charset`, `contentId`, `contentLocation`, etc.) with computed convenience properties
+- **Entity Conversion**: Added extension functions `toEntity()` and `toDomain()` for seamless conversion between domain models and database entities
+- **SMIL Consistency**: Fixed `SmilPresentation` vs `SmilLayout` inconsistency by adding `toLayout()` method to `SmilPresentation`
+- **Repository**: Simplified entity mapping using new conversion functions, eliminating manual field mapping
+- **DAO**: Added `observeMessagesWithPartsAndAddrs()` and `MessageWithPartsAndAddrs.toDomain()` for complete domain model conversion
+- **ViewModel**: Updated to use domain-focused `observeDomainMessages()` method returning `SmsItem` directly
+- **UI**: Updated MainActivity to work with unified domain model structure
+- **Tests**: Added comprehensive `EntityConversionTest` and updated existing tests for new data model
+
 ## 0.8.0 - MMS ingestion revamp: parts, SMIL, file-based attachments, DTO base64, and receiver→WorkManager handoff
 
 - Models: introduced `MessagePart`, `MessagePartType`, `MessageAddress`, `SmilPresentation/Slide/Item`, and `SmilLayout`; `SmsItem` now includes `addresses`, `parts`, and optional `smilLayout`
