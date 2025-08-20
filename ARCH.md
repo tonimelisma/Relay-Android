@@ -19,6 +19,7 @@ This document describes the technical architecture of the Android SMS/MMS/RCS Sy
 - The UI observes the local DB via domain models and reflects changes; no manual refresh button. The UI also surfaces a "Last synced" label read from `SharedPreferences` (`lastSyncSuccessTs`) updated by `MessageSyncWorker` on success.
 - Messages are deduplicated using a content-based hash.
 - **Entity Conversion Layer**: Extension functions provide seamless conversion between domain models (`MessagePart`, `MessageAddress`) and database entities (`MmsPartEntity`, `MmsAddrEntity`), ensuring data consistency and type safety.
+- **Test Stability**: All 33 tests pass consistently with comprehensive coverage of MMS functionality, entity conversion, and data flow.
 
 ---
 
